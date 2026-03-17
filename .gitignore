@@ -35,3 +35,9 @@ build/
 # Local logs
 autoscale.log
 
+
+### macOS ###
+.DS_Store
+
+### Claude Code ###
+.claude/
