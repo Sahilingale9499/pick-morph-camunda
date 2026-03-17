@@ -1,0 +1,198 @@
+openapi: 3.0.3
+info:
+  title: WorkflowProject API
+  version: 1.0.0
+  description: |
+    HTTP APIs and Kafka message payloads for the Camunda-based pick instruction workflow system.
+servers:
+  - url: http://localhost:9191
+    description: Local Spring Boot service
+paths:
+  /Order/pick_instruction:
+    post:
+      summary: Start pick instruction workflow
+      operationId: startPickInstructionWorkflow
+      tags: [Order]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PickInstruction'
+      responses:
+        '200':
+          description: Workflow started
+          content:
+            text/plain:
+              schema:
+                type: string
+  /Order/validate:
+    post:
+      summary: Send validation result signal
+      operationId: sendValidationResult
+      tags: [Order]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidationResult'
+      responses:
+        '200':
+          description: Validation signal sent
+          content:
+            text/plain:
+              schema:
+                type: string
+  /Order/terminate/{pickId}:
+    delete:
+      summary: Terminate workflow
+      operationId: terminateWorkflow
+      tags: [Order]
+      parameters:
+        - name: pickId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Pick ID used as workflow ID suffix
+      responses:
+        '200':
+          description: Workflow terminated
+          content:
+            text/plain:
+              schema:
+                type: string
+  /Order/transaction-update:
+    post:
+      summary: Send transaction update signal
+      operationId: sendTransactionUpdate
+      tags: [Order]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionUpdate'
+      responses:
+        '200':
+          description: Transaction update signal sent
+          content:
+            text/plain:
+              schema:
+                type: string
+components:
+  schemas:
+    PickInstruction:
+      type: object
+      properties:
+        pickId:
+          type: string
+          description: Used as WorkflowId and OrderId
+        item:
+          type: string
+        tpid:
+          type: string
+        scannableBarcodes:
+          type: array
+          items:
+            type: string
+        pickLocation:
+          type: string
+        dropLocation:
+          type: string
+        uom:
+          type: string
+        qty:
+          type: integer
+          format: int32
+      required: [pickId, item, tpid, uom, qty]
+    Order:
+      type: object
+      properties:
+        orderId:
+          type: string
+          description: Same as pick instruction ID
+        orderLines:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderLine'
+      required: [orderId, orderLines]
+    OrderLine:
+      type: object
+      properties:
+        pickInstructionId:
+          type: string
+        item:
+          type: string
+        tpid:
+          type: string
+        uom:
+          type: string
+        qty:
+          type: integer
+          format: int32
+        scannableBarcodes:
+          type: array
+          items:
+            type: string
+        pickLocation:
+          type: string
+        dropLocation:
+          type: string
+      required: [pickInstructionId, item, tpid, uom, qty]
+    ValidationResult:
+      type: object
+      properties:
+        orderId:
+          type: string
+          description: Matches PickId
+        transactionId:
+          type: string
+        success:
+          type: boolean
+      required: [orderId, success]
+    TransactionUpdate:
+      type: object
+      properties:
+        pickId:
+          type: string
+        transactionId:
+          type: string
+        command:
+          type: string
+          description: e.g., UPDATE, CANCEL, COMPLETE, RETRY
+        transactionType:
+          type: string
+          description: e.g., PICK, DROP, SCAN
+        processedQty:
+          type: integer
+          format: int32
+        status:
+          type: string
+          description: e.g., IN_PROGRESS, COMPLETED, FAILED
+        timestamp:
+          type: string
+          description: ISO-8601 timestamp
+        additionalInfo:
+          type: string
+      required: [pickId, transactionId, command, status]
+  # Kafka message descriptions
+  x-kafka:
+    topics:
+      my-topic:
+        direction: inbound
+        description: Triggers creation of a new PickInstruction workflow based on pickId in the message body.
+        payload:
+          type: string
+          description: Raw pickId string used to populate PickInstruction
+      transaction-updates-topic:
+        direction: inbound
+        description: Transaction updates consumed by TransactionUpdateListener.
+        payload:
+          $ref: '#/components/schemas/TransactionUpdate'
+      validation-results-topic:
+        direction: inbound
+        description: Validation results consumed by ValidationResultListener.
+        payload:
+          $ref: '#/components/schemas/ValidationResult'

@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package butler.core;
+
+option java_package = "com.greyorange.butler.core.grpc";
+option java_outer_classname = "ButlerCoreProto";
+option java_multiple_files = true;
+
+service ButlerCoreService {
+
+  rpc UpdatePickInstruction(UpdatePickInstructionRequest) returns (UpdatePickInstructionResponse);
+
+  rpc GetPickInstructionStatus(GetPickInstructionStatusRequest) returns (GetPickInstructionStatusResponse);
+}
+
+message UpdatePickInstructionRequest {
+  repeated PickedItemInfo picked_item_info_list = 1;
+  string slotref = 2;
+  string order_id = 3;
+  repeated NodePickDetails node_picked_details = 4;
+  PpsBinId ppsbin_id = 5;
+  int32 pps_id = 6;
+  repeated string ppsbin_list = 7;
+  string pps_point = 8;
+  bool is_marked_container_scanned = 9;
+  string seat_name = 10;
+  string transaction_id = 11;
+  repeated string checklists = 12;
+  CarrierInfo carrier_info = 13;
+  string irt_bin_serial = 14;
+  string user_logged_in = 15;
+  string dest_barcode = 16;
+  string dest_rollcage_barcode = 17;
+  string barcode_data_scanned = 18;
+  string dangling_area = 19;
+}
+
+// Response message for UpdatePickInstruction RPC
+message UpdatePickInstructionResponse {
+  string status = 1;
+  string message = 2;
+}
+
+// Request message for GetPickInstructionStatus RPC
+message GetPickInstructionStatusRequest {
+  string pick_id = 1;
+}
+
+// Response message for GetPickInstructionStatus RPC
+message GetPickInstructionStatusResponse {
+  string pick_id = 1;
+  string status = 2;
+  bool is_complete = 3;
+  int32 total_qty = 4;
+  int32 processed_qty = 5;
+  int32 remaining_qty = 6;
+}
+
+// Carrier information for the picked container
+message CarrierInfo {
+  string type = 1;
+  string carrier_type = 2;
+  string barcode = 3;
+}
+
+// Details about an individual picked item
+message PickedItemInfo {
+  ExceptionData exception = 1;
+  int32 tpid = 2;
+  string uom = 3;
+  string item_uid = 4;
+  repeated string pick_instruction_ids = 5;
+  int32 picked_qty = 6;
+}
+
+// Exception quantities for a picked item
+message ExceptionData {
+  int32 missing = 1;
+  int32 unscannable = 2;
+  int32 physically_damaged = 3;
+  int32 checklist_exception = 4;
+}
+
+// PPS bin identifier (PpsId + BinId)
+message PpsBinId {
+  int32 pps_id = 1;
+  string bin_id = 2;
+}
+
+// Tree of node-level pick details
+message NodePickDetails {
+  string id = 1;
+  string type = 2;
+  repeated NodePickDetails children = 3;
+  NodePickDetailsInfo details = 4;
+}
+
+// Additional information for a pick node
+message NodePickDetailsInfo {
+  int32 quantity = 1;
+  string transaction_type = 2;
+  repeated string barcode_references = 3;
+}
