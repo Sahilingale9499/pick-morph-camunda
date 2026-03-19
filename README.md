@@ -19,7 +19,7 @@ REST API  →  PickInstructionProcessService  →  Camunda RuntimeService
                         ┌─────────────────────────────┼──────────────────────────┐
                         │                             │                          │
                JavaDelegate beans              Message Catch Events        Kafka producers
-         (PublishOrderToKafka,           (ValidationResultMessage,       (orders-topic,
+         (PublishOrderToKafka,           (PickListResponseMessage,       (orders-topic,
           UpdatePickInstruction,          TransactionUpdateMessage)       transaction-events,
           MarkComplete/Failed, …)                     │                   workflow-complete)
                                                       │
@@ -29,7 +29,7 @@ REST API  →  PickInstructionProcessService  →  Camunda RuntimeService
 
 **Workflow steps** (modelled in `pick-instruction-workflow.bpmn`):
 1. Publish order to Kafka
-2. Wait for `ValidationResultMessage` (from `validation-results-topic`)
+2. Wait for `PickListResponseMessage` (from `validation-results-topic`)
 3. Check if pick instruction already complete
 4. Loop: wait for `TransactionUpdateMessage` (from `transaction-updates-topic`)
 5. Route on command — `UPDATE` / `CANCEL` / `COMPLETE` / `RETRY`
@@ -95,7 +95,7 @@ curl -X POST http://localhost:9191/Order/transaction-update \
 | Topic | Direction | Purpose |
 |-------|-----------|---------|
 | `orders-topic` | Outbound | Publishes pick orders downstream |
-| `validation-results-topic` | Inbound | Validation results → correlate `ValidationResultMessage` |
+| `validation-results-topic` | Inbound | Validation results → correlate `PickListResponseMessage` |
 | `transaction-updates-topic` | Inbound | Transaction updates → correlate `TransactionUpdateMessage` |
 | `transaction-events-topic` | Outbound | Per-transaction audit events |
 | `workflow-complete-events-topic` | Outbound | Final workflow audit event |

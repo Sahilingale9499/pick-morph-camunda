@@ -1,7 +1,7 @@
 package com.temporallearn.spring_temporal.delegates;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.temporallearn.spring_temporal.dto.PickInstruction;
+import com.temporallearn.spring_temporal.dto.PickInstructionRequestMessage;
 import com.temporallearn.spring_temporal.dto.TransactionUpdate;
 import com.temporallearn.spring_temporal.dto.UpdatePickInstructionDto;
 import com.temporallearn.spring_temporal.dto.UpdatePickInstructionResult;
@@ -38,15 +38,13 @@ public class UpdatePickInstructionDelegate implements JavaDelegate {
         String instructionJson = (String) execution.getVariable("instructionJson");
         String transactionUpdateJson = (String) execution.getVariable("transactionUpdateJson");
 
-        PickInstruction instruction = objectMapper.readValue(instructionJson, PickInstruction.class);
+        PickInstructionRequestMessage msg = objectMapper.readValue(instructionJson, PickInstructionRequestMessage.class);
         TransactionUpdate transactionUpdate = objectMapper.readValue(transactionUpdateJson, TransactionUpdate.class);
 
         log.info("UpdatePickInstructionDelegate executing for pickId: {}, transactionId: {}",
-                instruction.getPickId(), transactionUpdate.getTransactionId());
+                msg.getId(), transactionUpdate.getTransactionId());
 
-        // Build the DTO the same way PickInstructionWorkflowImpl does
-        UpdatePickInstructionDto updateDto = buildUpdateDto(instruction, transactionUpdate.getTransactionId());
-
+        UpdatePickInstructionDto updateDto = buildUpdateDto(msg, transactionUpdate);
         UpdatePickInstructionResult updateResult = pickInstructionService.updatePickInstruction(updateDto);
 
         log.info("Update result — success: {}, retriable: {}, status: {}, errorCode: {}",
@@ -57,12 +55,10 @@ public class UpdatePickInstructionDelegate implements JavaDelegate {
         execution.setVariable("updateRetriable", updateResult.isRetriable());
 
         if (!updateResult.isSuccess()) {
-            // Store error details for MarkFailureInButlerCoreDelegate (non-retriable path)
             execution.setVariable("updateErrorCode", updateResult.getErrorCode());
             execution.setVariable("updateErrorMessage", updateResult.getMessage());
 
             if (!updateResult.isRetriable()) {
-                // Non-retriable: set final status variables before the terminal path runs
                 String failureReason = "Butler Core error [" + updateResult.getErrorCode() + "]: "
                         + updateResult.getMessage();
                 execution.setVariable("finalStatus", "FAILED");
@@ -76,7 +72,7 @@ public class UpdatePickInstructionDelegate implements JavaDelegate {
 
         // SUCCESS — process the transaction update and determine completion
         boolean txComplete = pickInstructionService.processTransactionUpdate(
-                instruction.getPickId(), transactionUpdate);
+                msg.getId(), transactionUpdate);
 
         execution.setVariable("txComplete", txComplete);
 
@@ -85,20 +81,26 @@ public class UpdatePickInstructionDelegate implements JavaDelegate {
         }
     }
 
-    private UpdatePickInstructionDto buildUpdateDto(PickInstruction instruction, String transactionId) {
+    /**
+     * Build UpdatePickInstructionDto from the Kafka message fields + transaction update data.
+     * slotref comes from the message (primary source for Kafka-driven flow).
+     * ppsbinId is built from message ppsId + binId.
+     */
+    private UpdatePickInstructionDto buildUpdateDto(PickInstructionRequestMessage msg,
+                                                     TransactionUpdate transactionUpdate) {
         return UpdatePickInstructionDto.builder()
-                .orderId(instruction.getPickId())
-                .transactionId(transactionId)
-                .ppsId(instruction.getPpsId())
+                .orderId(msg.getId())
+                .transactionId(transactionUpdate.getTransactionId())
+                .ppsId(msg.getPpsId())
                 .ppsbinId(UpdatePickInstructionDto.PpsBinIdDto.builder()
-                        .ppsId(instruction.getPpsId())
-                        .binId(instruction.getBinId() != null ? instruction.getBinId() : "")
+                        .ppsId(msg.getPpsId())
+                        .binId(msg.getBinId() != null ? msg.getBinId() : "")
                         .build())
-                .ppsPoint(instruction.getPpsPoint())
-                .seatName(instruction.getSeatName())
-                .slotref(instruction.getSlotref())
-                .userLoggedIn(instruction.getUserLoggedIn())
-                .isMarkedContainerScanned(instruction.isMarkedContainerScanned())
+                .ppsPoint(null)        // not in Kafka message — TODO: add when butler_server provides it
+                .seatName(null)        // not in Kafka message — TODO
+                .slotref(msg.getSlotId())
+                .userLoggedIn(null)    // not in Kafka message — TODO
+                .isMarkedContainerScanned(false)
                 .build();
     }
 }

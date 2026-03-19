@@ -1,15 +1,12 @@
 package com.temporallearn.spring_temporal.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.temporallearn.spring_temporal.dto.Order;
-import com.temporallearn.spring_temporal.dto.OrderLine;
-import com.temporallearn.spring_temporal.dto.PickInstruction;
+import com.temporallearn.spring_temporal.dto.AePickListRequest;
+import com.temporallearn.spring_temporal.dto.PickInstructionRequestMessage;
 import com.temporallearn.spring_temporal.dto.TransactionUpdate;
 import com.temporallearn.spring_temporal.dto.UpdatePickInstructionDto;
 import com.temporallearn.spring_temporal.dto.UpdatePickInstructionResult;
 import com.temporallearn.spring_temporal.grpc.ButlerCoreGrpcClient;
 import com.temporallearn.spring_temporal.model.TransactionStatus;
-import com.temporallearn.spring_temporal.repository.TransactionStatusRepository;
 import com.greyorange.butler.core.grpc.GetPickInstructionStatusResponse;
 
 import lombok.extern.slf4j.Slf4j;
@@ -18,54 +15,49 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * Business logic service extracted from PickActivitiesImpl.
- * Used by Camunda JavaDelegate classes to perform all domain operations.
+ * Orchestration service used by Camunda JavaDelegate classes.
+ *
+ * Coordinates AE order building (AeOrderBuilderService), PostgreSQL persistence
+ * (AeOrderPersistenceService), gRPC calls to Butler Core, and Kafka publishing.
  */
 @Service
 @Slf4j
 public class PickInstructionService {
 
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final AeOrderBuilderService aeOrderBuilderService;
+    private final AeOrderPersistenceService aeOrderPersistenceService;
     private final ButlerCoreGrpcClient butlerCoreGrpcClient;
-    private final TransactionStatusRepository transactionStatusRepository;
-    private final ObjectMapper objectMapper;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
     private static final int UPDATE_MAX_RETRIES = 3;
     private static final long RETRY_BASE_DELAY_MS = 1000L;
 
-    public PickInstructionService(KafkaTemplate<String, Object> kafkaTemplate,
+    public PickInstructionService(AeOrderBuilderService aeOrderBuilderService,
+                                  AeOrderPersistenceService aeOrderPersistenceService,
                                   ButlerCoreGrpcClient butlerCoreGrpcClient,
-                                  TransactionStatusRepository transactionStatusRepository,
-                                  ObjectMapper objectMapper) {
-        this.kafkaTemplate = kafkaTemplate;
+                                  KafkaTemplate<String, Object> kafkaTemplate) {
+        this.aeOrderBuilderService = aeOrderBuilderService;
+        this.aeOrderPersistenceService = aeOrderPersistenceService;
         this.butlerCoreGrpcClient = butlerCoreGrpcClient;
-        this.transactionStatusRepository = transactionStatusRepository;
-        this.objectMapper = objectMapper;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     /**
-     * Transform PickInstruction to Order and publish to Kafka.
+     * Build AePickListRequest from the Kafka message, persist to ae_order table,
+     * and publish to "pick-list.requests".
+     *
+     * Throws RuntimeException (aborting the Camunda task) if butler_server cannot be
+     * reached or the matching orderline is not found — no AE order is created in that case.
      */
-    public void publishOrderToKafka(PickInstruction pi) {
-        Order order = new Order();
-        order.setOrderId(pi.getPickId());
-        OrderLine line = new OrderLine();
-        line.setPickInstructionId(pi.getPickId());
-        line.setItem(pi.getItem());
-        line.setQty(pi.getQty());
-        line.setUom(pi.getUom());
-        line.setScannableBarcodes(pi.getScannableBarcodes());
-        line.setPickLocation(pi.getPickLocation());
-        line.setDropLocation(pi.getDropLocation());
-        order.setOrderLines(List.of(line));
-
-        kafkaTemplate.send("orders-topic", order.getOrderId(), order);
-        log.info("Published Order to Kafka: {}", order.getOrderId());
+    public void publishPickListRequest(PickInstructionRequestMessage msg) {
+        AePickListRequest request = aeOrderBuilderService.build(msg);
+        aeOrderPersistenceService.saveAeOrder(request);
+        kafkaTemplate.send("pick-list.requests", msg.getId(), request);
+        log.info("Persisted and published AePickListRequest to pick-list.requests for pickId: {}", msg.getId());
     }
 
     /**
@@ -88,7 +80,7 @@ public class PickInstructionService {
                     result.isRetriable(), result.getErrorCode());
 
             if (result.isSuccess()) {
-                persistTransactionStatus(txId, dto.getOrderId(), "SUCCESS");
+                aeOrderPersistenceService.saveTransactionStatus(txId, dto.getOrderId(), "SUCCESS");
                 return result;
             }
 
@@ -99,7 +91,7 @@ public class PickInstructionService {
                     || message.contains("duplicate")
                     || message.contains("already exists")) {
                 log.warn("Butler Core indicates duplicate transaction (treated as success) - txId: {}", txId);
-                persistTransactionStatus(txId, dto.getOrderId(), "SUCCESS");
+                aeOrderPersistenceService.saveTransactionStatus(txId, dto.getOrderId(), "SUCCESS");
                 return UpdatePickInstructionResult.ok("SUCCESS", "Duplicate treated as success: " + result.getMessage());
             }
 
@@ -119,7 +111,7 @@ public class PickInstructionService {
             }
 
             // Permanent failure or retries exhausted
-            persistTransactionStatus(txId, dto.getOrderId(), "FAILED");
+            aeOrderPersistenceService.saveTransactionStatus(txId, dto.getOrderId(), "FAILED");
             break;
         }
 
@@ -152,7 +144,6 @@ public class PickInstructionService {
      */
     public void markPickInstructionComplete(String pickId) {
         log.info("Finalizing Workflow: Pick Instruction {} is COMPLETE.", pickId);
-        // repository.updateStatus(pickId, "COMPLETED");
     }
 
     /**
@@ -161,8 +152,6 @@ public class PickInstructionService {
     public void markPickInstructionFailed(String pickId, String transactionId, String failureReason) {
         log.error("Pick Instruction FAILED - pickId: {}, transactionId: {}, reason: {}",
                 pickId, transactionId, failureReason);
-        // repository.updateStatus(pickId, "FAILED");
-        // repository.setFailureReason(pickId, failureReason);
     }
 
     /**
@@ -189,7 +178,7 @@ public class PickInstructionService {
 
         if (txId != null && !txId.isEmpty()) {
             try {
-                Optional<TransactionStatus> existing = transactionStatusRepository.findById(txId);
+                Optional<TransactionStatus> existing = aeOrderPersistenceService.findTransactionStatus(txId);
                 if (existing.isPresent()) {
                     String status = existing.get().getStatus();
                     if ("SUCCESS".equals(status)) {
@@ -203,7 +192,7 @@ public class PickInstructionService {
             } catch (Exception e) {
                 log.warn("Failed to read persisted transaction status for txId: {} — falling back to processing", txId, e);
             }
-            persistTransactionStatus(txId, pickId, "IN_PROGRESS");
+            aeOrderPersistenceService.saveTransactionStatus(txId, pickId, "IN_PROGRESS");
         }
 
         int attempts = 0;
@@ -212,7 +201,7 @@ public class PickInstructionService {
             attempts++;
             try {
                 boolean isComplete = "COMPLETED".equalsIgnoreCase(transactionUpdate.getStatus());
-                persistTransactionStatus(txId, pickId, "SUCCESS");
+                aeOrderPersistenceService.saveTransactionStatus(txId, pickId, "SUCCESS");
                 log.info("Transaction processed for PI: {}, Status: {}, Complete: {}",
                         pickId, transactionUpdate.getStatus(), isComplete);
                 return isComplete;
@@ -221,7 +210,7 @@ public class PickInstructionService {
                         pickId, txId, attempts, e);
                 if (attempts >= maxAttempts) {
                     log.error("Exceeded max attempts processing transaction update for pickId: {}, txId: {}", pickId, txId);
-                    persistTransactionStatus(txId, pickId, "FAILED");
+                    aeOrderPersistenceService.saveTransactionStatus(txId, pickId, "FAILED");
                     try {
                         markFailureInButlerCore(pickId, "PROCESSING_FAILED", e.getMessage());
                     } catch (Exception ignore) {
@@ -234,7 +223,7 @@ public class PickInstructionService {
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     log.warn("Interrupted during processing backoff", ie);
-                    persistTransactionStatus(txId, pickId, "FAILED");
+                    aeOrderPersistenceService.saveTransactionStatus(txId, pickId, "FAILED");
                     return false;
                 }
             }
@@ -319,19 +308,5 @@ public class PickInstructionService {
         }
 
         log.info("Workflow cleanup complete for pickId: {} — final status: {}", pickId, internalStatus);
-    }
-
-    // ─── Internal helper ────────────────────────────────────────────────────
-
-    private void persistTransactionStatus(String txId, String pickId, String status) {
-        if (txId == null || txId.isEmpty()) {
-            return;
-        }
-        try {
-            TransactionStatus ts = new TransactionStatus(txId, pickId, status, Instant.now());
-            transactionStatusRepository.save(ts);
-        } catch (Exception e) {
-            log.warn("Failed to persist transaction status {} for txId: {}", status, txId, e);
-        }
     }
 }

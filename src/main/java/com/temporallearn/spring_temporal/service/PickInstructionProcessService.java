@@ -1,7 +1,7 @@
 package com.temporallearn.spring_temporal.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.temporallearn.spring_temporal.dto.PickInstruction;
+import com.temporallearn.spring_temporal.dto.PickInstructionRequestMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.RuntimeService;
 import org.camunda.bpm.engine.runtime.ProcessInstance;
@@ -12,8 +12,9 @@ import java.util.Map;
 
 /**
  * Camunda process management service.
- * Replaces PickInstructionWorkflowStarter — starts and terminates
- * the "pickInstructionProcess" Camunda BPM process.
+ * Starts and terminates the "pickInstructionProcess" Camunda BPM process.
+ * Accepts PickInstructionRequestMessage as the workflow input — used by both the
+ * Kafka listener (pick-instruction.requests) and the REST controller.
  */
 @Service
 @Slf4j
@@ -29,34 +30,34 @@ public class PickInstructionProcessService {
     }
 
     /**
-     * Start a new Camunda process instance for the given PickInstruction.
+     * Start a new Camunda process instance for the given PickInstructionRequestMessage.
      * Idempotent: if a process with the same business key is already running,
      * the start is skipped and a warning is logged.
      */
-    public void startProcess(PickInstruction instruction) {
-        String businessKey = "Order_workflow_" + instruction.getPickId();
+    public void startProcess(PickInstructionRequestMessage msg) {
+        String businessKey = "Order_workflow_" + msg.getId();
 
         // Idempotency check
         long existing = runtimeService.createProcessInstanceQuery()
                 .processInstanceBusinessKey(businessKey)
                 .count();
         if (existing > 0) {
-            log.warn("Process already running for pickId: {}", instruction.getPickId());
+            log.warn("Process already running for pickId: {}", msg.getId());
             return;
         }
 
         try {
-            String instructionJson = objectMapper.writeValueAsString(instruction);
+            String instructionJson = objectMapper.writeValueAsString(msg);
             Map<String, Object> vars = new HashMap<>();
-            vars.put("pickId", instruction.getPickId());
+            vars.put("pickId", msg.getId());
             vars.put("instructionJson", instructionJson);
             vars.put("finalStatus", "UNKNOWN");
 
             runtimeService.startProcessInstanceByKey("pickInstructionProcess", businessKey, vars);
-            log.info("Started Camunda process for pickId: {}", instruction.getPickId());
+            log.info("Started Camunda process for pickId: {}", msg.getId());
         } catch (Exception e) {
-            log.error("Failed to start Camunda process for pickId: {}", instruction.getPickId(), e);
-            throw new RuntimeException("Failed to start process for pickId: " + instruction.getPickId(), e);
+            log.error("Failed to start Camunda process for pickId: {}", msg.getId(), e);
+            throw new RuntimeException("Failed to start process for pickId: " + msg.getId(), e);
         }
     }
 

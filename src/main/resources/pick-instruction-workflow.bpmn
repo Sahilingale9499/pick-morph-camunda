@@ -11,7 +11,7 @@
   <!-- ═══════════════════════════════════════════════════
        Message definitions for intermediate catch events
        ═══════════════════════════════════════════════════ -->
-  <message id="Message_ValidationResult" name="ValidationResultMessage"/>
+  <message id="Message_ValidationResult" name="PickListResponseMessage"/>
   <message id="Message_TransactionUpdate" name="TransactionUpdateMessage"/>
 
   <!-- ═══════════════════════════════════════════════════
@@ -35,34 +35,35 @@
     <!-- ─── Wait for Validation Result (Message Catch) ─── -->
     <intermediateCatchEvent id="waitForValidation" name="Wait for Validation">
       <incoming>flow_publishOrder_to_waitValidation</incoming>
-      <outgoing>flow_waitValidation_to_validationGw</outgoing>
+      <outgoing>flow_waitValidation_to_publishResponse</outgoing>
       <messageEventDefinition id="MsgDef_validation" messageRef="Message_ValidationResult"/>
     </intermediateCatchEvent>
 
+    <!-- ─── Publish pick-instruction.response to butler_server ─── -->
+    <serviceTask id="publishPickInstructionResponseTask"
+                 name="Publish pick-instruction.response"
+                 camunda:delegateExpression="${publishPickInstructionResponseDelegate}">
+      <incoming>flow_waitValidation_to_publishResponse</incoming>
+      <outgoing>flow_publishResponse_to_validationGw</outgoing>
+    </serviceTask>
+
     <!-- ─── Validation Gateway ─── -->
     <exclusiveGateway id="validationGateway" name="Validation OK?" default="flow_validationGw_to_checkComplete">
-      <incoming>flow_waitValidation_to_validationGw</incoming>
+      <incoming>flow_publishResponse_to_validationGw</incoming>
       <outgoing>flow_validationGw_failed</outgoing>
       <outgoing>flow_validationGw_to_checkComplete</outgoing>
     </exclusiveGateway>
 
-    <!-- ─── [FAIL PATH] Set status FAILED for validation failure ─── -->
-    <serviceTask id="markFailedValidation"
-                 name="Mark Failed (Validation)"
-                 camunda:delegateExpression="${markPickInstructionFailedDelegate}">
+    <!-- ─── [FAIL PATH] Terminate AE order in PostgreSQL ─── -->
+    <serviceTask id="terminateAeOrderTask"
+                 name="Terminate AE Order"
+                 camunda:delegateExpression="${terminateAeOrderDelegate}">
       <incoming>flow_validationGw_failed</incoming>
-      <outgoing>flow_markFailedValidation_to_onComplete</outgoing>
-    </serviceTask>
-
-    <serviceTask id="onWorkflowCompleteValidationFailed"
-                 name="On Workflow Complete (Validation Failed)"
-                 camunda:delegateExpression="${onWorkflowCompleteDelegate}">
-      <incoming>flow_markFailedValidation_to_onComplete</incoming>
-      <outgoing>flow_onCompleteValidFail_to_end</outgoing>
+      <outgoing>flow_terminateAeOrder_to_end</outgoing>
     </serviceTask>
 
     <endEvent id="endValidationFailed" name="End (Validation Failed)">
-      <incoming>flow_onCompleteValidFail_to_end</incoming>
+      <incoming>flow_terminateAeOrder_to_end</incoming>
     </endEvent>
 
     <!-- ─── Check if Pick Instruction Already Complete ─── -->
@@ -282,15 +283,20 @@
                   sourceRef="publishOrderTask"
                   targetRef="waitForValidation"/>
 
-    <!-- Wait for Validation → Validation Gateway -->
-    <sequenceFlow id="flow_waitValidation_to_validationGw"
+    <!-- Wait for Validation → Publish pick-instruction.response -->
+    <sequenceFlow id="flow_waitValidation_to_publishResponse"
                   sourceRef="waitForValidation"
+                  targetRef="publishPickInstructionResponseTask"/>
+
+    <!-- Publish pick-instruction.response → Validation Gateway -->
+    <sequenceFlow id="flow_publishResponse_to_validationGw"
+                  sourceRef="publishPickInstructionResponseTask"
                   targetRef="validationGateway"/>
 
     <!-- Validation Gateway → FAILED (validationSuccess == false) -->
     <sequenceFlow id="flow_validationGw_failed"
                   sourceRef="validationGateway"
-                  targetRef="markFailedValidation">
+                  targetRef="terminateAeOrderTask">
       <conditionExpression xsi:type="tFormalExpression">${validationSuccess == false}</conditionExpression>
     </sequenceFlow>
 
@@ -299,14 +305,9 @@
                   sourceRef="validationGateway"
                   targetRef="checkCompleteTask"/>
 
-    <!-- Mark Failed (Validation) → On Workflow Complete (Validation Failed) -->
-    <sequenceFlow id="flow_markFailedValidation_to_onComplete"
-                  sourceRef="markFailedValidation"
-                  targetRef="onWorkflowCompleteValidationFailed"/>
-
-    <!-- On Workflow Complete (Validation Failed) → End -->
-    <sequenceFlow id="flow_onCompleteValidFail_to_end"
-                  sourceRef="onWorkflowCompleteValidationFailed"
+    <!-- Terminate AE Order → End (Validation Failed) -->
+    <sequenceFlow id="flow_terminateAeOrder_to_end"
+                  sourceRef="terminateAeOrderTask"
                   targetRef="endValidationFailed"/>
 
     <!-- Check Complete → Already Complete Gateway -->
@@ -506,20 +507,20 @@
         <dc:Bounds x="412" y="82" width="36" height="36"/>
       </bpmndi:BPMNShape>
 
-      <bpmndi:BPMNShape id="validationGateway_di" bpmnElement="validationGateway" isMarkerVisible="true">
-        <dc:Bounds x="495" y="75" width="50" height="50"/>
+      <bpmndi:BPMNShape id="publishPickInstructionResponseTask_di" bpmnElement="publishPickInstructionResponseTask">
+        <dc:Bounds x="460" y="60" width="120" height="80"/>
       </bpmndi:BPMNShape>
 
-      <bpmndi:BPMNShape id="markFailedValidation_di" bpmnElement="markFailedValidation">
+      <bpmndi:BPMNShape id="validationGateway_di" bpmnElement="validationGateway" isMarkerVisible="true">
+        <dc:Bounds x="635" y="75" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="terminateAeOrderTask_di" bpmnElement="terminateAeOrderTask">
         <dc:Bounds x="600" y="160" width="120" height="80"/>
       </bpmndi:BPMNShape>
 
-      <bpmndi:BPMNShape id="onWorkflowCompleteValidationFailed_di" bpmnElement="onWorkflowCompleteValidationFailed">
-        <dc:Bounds x="760" y="160" width="120" height="80"/>
-      </bpmndi:BPMNShape>
-
       <bpmndi:BPMNShape id="endValidationFailed_di" bpmnElement="endValidationFailed">
-        <dc:Bounds x="932" y="182" width="36" height="36"/>
+        <dc:Bounds x="772" y="182" width="36" height="36"/>
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="checkCompleteTask_di" bpmnElement="checkCompleteTask">

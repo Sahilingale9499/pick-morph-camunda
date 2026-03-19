@@ -7,8 +7,10 @@ import lombok.Data;
 @Data
 public class PickInstruction {
     private String pickId;               // Used as WorkflowId and OrderId
+    private String orderId;              // Normal/main order ID
+    private String orderlineId;          // Normal/main orderline ID
     private String item;
-    private String tpid;
+    private int tpid;                    // Product type ID (integer) — consistent with Kafka message
     private List<String> scannableBarcodes;
     private String pickLocation;
     private String dropLocation;

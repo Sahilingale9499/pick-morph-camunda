@@ -1,8 +1,6 @@
 package com.temporallearn.spring_temporal.controller;
 
-import com.temporallearn.spring_temporal.dto.PickInstruction;
 import com.temporallearn.spring_temporal.dto.TransactionUpdate;
-import com.temporallearn.spring_temporal.dto.ValidationResult;
 import com.temporallearn.spring_temporal.service.PickInstructionProcessService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +20,6 @@ public class PickWorkflowController {
     private static final Logger log = LoggerFactory.getLogger(PickWorkflowController.class);
 
     private static final String TRANSACTION_UPDATES_TOPIC = "transaction-updates-topic";
-    private static final String VALIDATION_RESULTS_TOPIC  = "validation-results-topic";
 
     private final PickInstructionProcessService processService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
@@ -31,43 +28,6 @@ public class PickWorkflowController {
                                    KafkaTemplate<String, Object> kafkaTemplate) {
         this.processService = processService;
         this.kafkaTemplate  = kafkaTemplate;
-    }
-
-    /**
-     * Start a new Camunda process instance for the given PickInstruction.
-     * Idempotent: duplicate starts for the same pickId are silently ignored.
-     *
-     * Example: POST /Order/pick_instruction
-     * Body: {"pickId": "Pick5", "item": "SKU-001", ...}
-     */
-    @PostMapping("/pick_instruction")
-    public ResponseEntity<String> startPickInstruction(@RequestBody PickInstruction pickInstruction) {
-        processService.startProcess(pickInstruction);
-        log.info("Pick instruction process started for pickId: {}", pickInstruction.getPickId());
-        return ResponseEntity.ok("Pick instruction process started for pickId: "
-                + pickInstruction.getPickId());
-    }
-
-    /**
-     * Publishes a validation result to Kafka.
-     * The ValidationResultListener consumes the message and correlates the Camunda message
-     * so the process can proceed past the validation wait point.
-     *
-     * Example: POST /Order/validate
-     * Body: {"orderId": "Pick5", "transactionId": "TXN-001", "success": true}
-     */
-    @PostMapping("/validate")
-    public ResponseEntity<String> sendValidationResult(@RequestBody ValidationResult result) {
-        log.info("Publishing validation result to Kafka for orderId: {}, transactionId: {}",
-                result.getOrderId(), result.getTransactionId());
-
-        kafkaTemplate.send(VALIDATION_RESULTS_TOPIC, result.getOrderId(), result);
-
-        log.info("Validation result published to topic '{}' for orderId: {}",
-                VALIDATION_RESULTS_TOPIC, result.getOrderId());
-
-        return ResponseEntity.ok("Validation result published to Kafka for orderId: "
-                + result.getOrderId() + ", transactionId: " + result.getTransactionId());
     }
 
     /**

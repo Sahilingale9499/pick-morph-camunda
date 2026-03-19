@@ -1,0 +1,139 @@
+package com.temporallearn.spring_temporal.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Builder;
+import lombok.Data;
+import java.util.List;
+
+@Data
+@Builder
+@JsonInclude(JsonInclude.Include.ALWAYS)
+public class AePickListRequest {
+
+    private String externalServiceRequestId;
+    private List<AeServiceRequestLine> serviceRequests;
+    private List<String> fulfillmentArea;
+    private AeTopLevelAttributes attributes;
+    private String type;
+
+    @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    public static class AeServiceRequestLine {
+        private String externalServiceRequestId;
+        private AeServiceRequestLineAttributes attributes;
+        private AeExpectations expectations;
+        private String type;
+    }
+
+    @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    public static class AeServiceRequestLineAttributes {
+        @JsonProperty("extra_info")
+        private ExtraInfo extraInfo;
+        private AeLocation location;
+    }
+
+    @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    public static class ExtraInfo {
+        @JsonProperty("client_task_id")
+        private String clientTaskId;
+    }
+
+    @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    public static class AeLocation {
+        private String displayName;
+        private String fullAddress;
+        private AeAddressFields addressFields;
+    }
+
+    @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    public static class AeAddressFields {
+        private String side;
+        private String zone;
+        private String level;
+        private String bay;
+        private String aisle;
+    }
+
+    @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    public static class AeExpectations {
+        private List<AeContainer> containers;
+    }
+
+    @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    public static class AeContainer {
+        private List<AeProduct> products;
+    }
+
+    @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    public static class AeProduct {
+        private int productQuantity;
+        private AeProductAttributes productAttributes;
+    }
+
+    @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    public static class AeProductAttributes {
+        @JsonProperty("filter_parameters")
+        private List<String> filterParameters;
+        private List<String> barcodes;
+        @JsonProperty("product_sku")
+        private String productSku;
+        @JsonProperty("package_parameters")
+        private List<String> packageParameters;
+        @JsonProperty("lot_id")
+        private String lotId;
+    }
+
+    @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    public static class AeTopLevelAttributes {
+        @JsonProperty("order_options")
+        private AeOrderOptions orderOptions;
+        @JsonProperty("simple_priority")
+        private String simplePriority;
+    }
+
+    @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    public static class AeOrderOptions {
+        @JsonProperty("customer_order_info")
+        private AeCustomerOrderInfo customerOrderInfo;
+        private boolean palletization;
+        @JsonProperty("order_clubbing")
+        private boolean orderClubbing;
+        @JsonProperty("order_splitting")
+        private boolean orderSplitting;
+        @JsonProperty("orderline_splitting")
+        private boolean orderlineSplitting;
+        @JsonProperty("grouping_tags")
+        private AeGroupingTags groupingTags;
+        private List<String> bintags;
+        @JsonProperty("container_type")
+        private String containerType;
+        @JsonProperty("destination_group")
+        private String destinationGroup;
+        @JsonProperty("simple_priority")
+        private String simplePriority;
+        private List<String> behaviours;
+    }
+
+    @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    public static class AeCustomerOrderInfo {
+        @JsonProperty("order_id")
+        private String orderId;
+        @JsonProperty("order_line_id")
+        private String orderLineId;
+        @JsonProperty("master_order_id")
+        private String masterOrderId;
+        @JsonProperty("shipment_id")
+        private String shipmentId;
+    }
+
+    // No NON_NULL — all three fields are always explicitly set to "" per spec
+    @Data @Builder
+    public static class AeGroupingTags {
+        @JsonProperty("mission_grouning_tag")   // "grouning" intentional — matches external system field name
+        private String missionGrouningTag;
+        @JsonProperty("container_grouping_tag")
+        private String containerGroupingTag;
+        @JsonProperty("bin_grouping_tag")
+        private String binGroupingTag;
+    }
+}

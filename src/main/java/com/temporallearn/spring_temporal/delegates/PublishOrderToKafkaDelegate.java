@@ -1,7 +1,7 @@
 package com.temporallearn.spring_temporal.delegates;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.temporallearn.spring_temporal.dto.PickInstruction;
+import com.temporallearn.spring_temporal.dto.PickInstructionRequestMessage;
 import com.temporallearn.spring_temporal.service.PickInstructionService;
 import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
@@ -9,8 +9,8 @@ import org.camunda.bpm.engine.delegate.JavaDelegate;
 import org.springframework.stereotype.Component;
 
 /**
- * Deserializes PickInstruction from the "instructionJson" process variable
- * and publishes the corresponding Order to Kafka.
+ * Deserializes PickInstructionRequestMessage from the "instructionJson" process variable,
+ * builds the AE order payload, persists it to PostgreSQL, and publishes to "pick-list.requests".
  */
 @Component
 @Slf4j
@@ -28,8 +28,8 @@ public class PublishOrderToKafkaDelegate implements JavaDelegate {
     @Override
     public void execute(DelegateExecution execution) throws Exception {
         String instructionJson = (String) execution.getVariable("instructionJson");
-        PickInstruction instruction = objectMapper.readValue(instructionJson, PickInstruction.class);
-        log.info("PublishOrderToKafkaDelegate executing for pickId: {}", instruction.getPickId());
-        pickInstructionService.publishOrderToKafka(instruction);
+        PickInstructionRequestMessage msg = objectMapper.readValue(instructionJson, PickInstructionRequestMessage.class);
+        log.info("PublishOrderToKafkaDelegate executing for pickId: {}", msg.getId());
+        pickInstructionService.publishPickListRequest(msg);
     }
 }
