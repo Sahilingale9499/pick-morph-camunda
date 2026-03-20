@@ -50,6 +50,22 @@ public class PickInstructionRequestListener {
             log.error("Received pick-instruction.requests message with null/blank id — dropping");
             return;
         }
+        if (msg.getOrderId() == null || msg.getOrderId().isBlank()) {
+            log.error("Received pick-instruction.requests with null/blank orderId for pickId: {} — dropping", msg.getId());
+            return;
+        }
+        if (msg.getOrderlineId() == null || msg.getOrderlineId().isBlank()) {
+            log.error("Received pick-instruction.requests with null/blank orderlineId for pickId: {} — dropping", msg.getId());
+            return;
+        }
+        if (msg.getQty() <= 0) {
+            log.error("Received pick-instruction.requests with invalid qty: {} for pickId: {} — dropping", msg.getQty(), msg.getId());
+            return;
+        }
+        if (msg.getSlotId() == null || msg.getSlotId().isBlank()) {
+            log.error("Received pick-instruction.requests with null/blank slotId for pickId: {} — dropping", msg.getId());
+            return;
+        }
 
         log.info("Received pick-instruction | pickId: {} | orderId: {} | tpid: {} | ppsId: {}",
                 msg.getId(), msg.getOrderId(), msg.getTpid(), msg.getPpsId());

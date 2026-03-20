@@ -10,6 +10,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
@@ -32,12 +34,15 @@ public class AeOrder {
     private String type;
 
     // JSON array string, e.g. ["assist_area"]
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "fulfillment_area", columnDefinition = "JSONB")
     private String fulfillmentArea;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "attributes", columnDefinition = "JSONB")
     private String attributes;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "expectations", columnDefinition = "JSONB")
     private String expectations;
 

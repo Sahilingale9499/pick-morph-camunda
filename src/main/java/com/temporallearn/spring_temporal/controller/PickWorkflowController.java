@@ -1,11 +1,12 @@
 package com.temporallearn.spring_temporal.controller;
 
 import com.temporallearn.spring_temporal.dto.TransactionUpdate;
+import com.temporallearn.spring_temporal.service.OutboxService;
 import com.temporallearn.spring_temporal.service.PickInstructionProcessService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,12 +23,12 @@ public class PickWorkflowController {
     private static final String TRANSACTION_UPDATES_TOPIC = "transaction-updates-topic";
 
     private final PickInstructionProcessService processService;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final OutboxService outboxService;
 
     public PickWorkflowController(PickInstructionProcessService processService,
-                                   KafkaTemplate<String, Object> kafkaTemplate) {
+                                   OutboxService outboxService) {
         this.processService = processService;
-        this.kafkaTemplate  = kafkaTemplate;
+        this.outboxService  = outboxService;
     }
 
     /**
@@ -41,21 +42,15 @@ public class PickWorkflowController {
      * Example: POST /Order/transaction-update
      * Body: {"pickId": "Pick5", "transactionId": "TXN-002", "command": "UPDATE", ...}
      */
+    @Transactional
     @PostMapping("/transaction-update")
     public ResponseEntity<String> sendTransactionUpdate(@RequestBody TransactionUpdate update) {
-        log.info("Publishing transaction update to Kafka for pickId: {}, transactionId: {}, command: {}",
+        log.info("Queuing transaction update via outbox for pickId: {}, transactionId: {}, command: {}",
                 update.getPickId(), update.getTransactionId(), update.getCommand());
 
-        kafkaTemplate.send(TRANSACTION_UPDATES_TOPIC, update.getPickId(), update);
+        outboxService.save(TRANSACTION_UPDATES_TOPIC, update.getPickId(), update);
 
-        log.info("Transaction update published to topic '{}' for pickId: {}",
-                TRANSACTION_UPDATES_TOPIC, update.getPickId());
-
-        return ResponseEntity.ok("Transaction update published to Kafka for pickId: "
-                + update.getPickId()
-                + ", transactionId: " + update.getTransactionId()
-                + ", command: " + update.getCommand()
-                + ", status: " + update.getStatus());
+        return ResponseEntity.ok("Transaction update queued for pickId: " + update.getPickId());
     }
 
     /**

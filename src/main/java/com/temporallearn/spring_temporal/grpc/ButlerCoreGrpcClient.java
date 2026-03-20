@@ -37,7 +37,7 @@ public class ButlerCoreGrpcClient {
     @Value("${butler.core.grpc.timeout-seconds:30}")
     private int timeoutSeconds;
 
-    @Value("${butler.core.grpc.mock-enabled:true}")
+    @Value("${butler.core.grpc.mock-enabled:false}")
     private boolean mockEnabled;
 
     private ManagedChannel channel;

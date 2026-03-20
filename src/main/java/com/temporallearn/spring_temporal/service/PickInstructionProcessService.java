@@ -3,6 +3,7 @@ package com.temporallearn.spring_temporal.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.temporallearn.spring_temporal.dto.PickInstructionRequestMessage;
 import lombok.extern.slf4j.Slf4j;
+import org.camunda.bpm.engine.ProcessEngineException;
 import org.camunda.bpm.engine.RuntimeService;
 import org.camunda.bpm.engine.runtime.ProcessInstance;
 import org.springframework.stereotype.Service;
@@ -31,30 +32,32 @@ public class PickInstructionProcessService {
 
     /**
      * Start a new Camunda process instance for the given PickInstructionRequestMessage.
-     * Idempotent: if a process with the same business key is already running,
-     * the start is skipped and a warning is logged.
+     * Idempotent: uses try-catch on the actual start call to avoid TOCTOU race conditions
+     * where two threads could both pass a pre-check and create duplicate processes.
      */
     public void startProcess(PickInstructionRequestMessage msg) {
         String businessKey = "Order_workflow_" + msg.getId();
-
-        // Idempotency check
-        long existing = runtimeService.createProcessInstanceQuery()
-                .processInstanceBusinessKey(businessKey)
-                .count();
-        if (existing > 0) {
-            log.warn("Process already running for pickId: {}", msg.getId());
-            return;
-        }
 
         try {
             String instructionJson = objectMapper.writeValueAsString(msg);
             Map<String, Object> vars = new HashMap<>();
             vars.put("pickId", msg.getId());
+            vars.put("orderId", msg.getOrderId());
             vars.put("instructionJson", instructionJson);
             vars.put("finalStatus", "UNKNOWN");
 
             runtimeService.startProcessInstanceByKey("pickInstructionProcess", businessKey, vars);
             log.info("Started Camunda process for pickId: {}", msg.getId());
+        } catch (ProcessEngineException e) {
+            // Camunda throws when a process with the same business key already exists
+            // (or on other engine-level conflicts). Treat as idempotent duplicate.
+            String message = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+            if (message.contains("unique") || message.contains("duplicate") || message.contains("already exists")) {
+                log.warn("Process already running for pickId: {} — duplicate start suppressed", msg.getId());
+                return;
+            }
+            log.error("Failed to start Camunda process for pickId: {}", msg.getId(), e);
+            throw new RuntimeException("Failed to start process for pickId: " + msg.getId(), e);
         } catch (Exception e) {
             log.error("Failed to start Camunda process for pickId: {}", msg.getId(), e);
             throw new RuntimeException("Failed to start process for pickId: " + msg.getId(), e);

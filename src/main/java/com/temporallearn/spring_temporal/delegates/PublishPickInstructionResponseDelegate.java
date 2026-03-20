@@ -1,15 +1,15 @@
 package com.temporallearn.spring_temporal.delegates;
 
-import com.temporallearn.spring_temporal.dto.PickInstructionResponseMessage;
+import com.temporallearn.spring_temporal.service.PickInstructionService;
 import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
 import org.camunda.bpm.engine.delegate.JavaDelegate;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 /**
  * Publishes the validation outcome to "pick-instruction.response" so that
  * butler_server is notified whether the AE order was accepted or rejected.
+ * Uses the transactional outbox via PickInstructionService.
  *
  * Reads process variables:
  *   pickId           - pick instruction ID
@@ -19,10 +19,10 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class PublishPickInstructionResponseDelegate implements JavaDelegate {
 
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final PickInstructionService pickInstructionService;
 
-    public PublishPickInstructionResponseDelegate(KafkaTemplate<String, Object> kafkaTemplate) {
-        this.kafkaTemplate = kafkaTemplate;
+    public PublishPickInstructionResponseDelegate(PickInstructionService pickInstructionService) {
+        this.pickInstructionService = pickInstructionService;
     }
 
     @Override
@@ -31,12 +31,7 @@ public class PublishPickInstructionResponseDelegate implements JavaDelegate {
         Boolean validationSuccess = (Boolean) execution.getVariable("validationSuccess");
         boolean success = Boolean.TRUE.equals(validationSuccess);
 
-        PickInstructionResponseMessage msg = PickInstructionResponseMessage.builder()
-                .id(pickId)
-                .status(success ? "success" : "failure")
-                .build();
-
-        kafkaTemplate.send("pick-instruction.response", pickId, msg);
-        log.info("Published pick-instruction.response | pickId: {} | status: {}", pickId, msg.getStatus());
+        pickInstructionService.publishPickInstructionResponse(pickId, success);
+        log.info("Queued pick-instruction.response via outbox | pickId: {} | success: {}", pickId, success);
     }
 }

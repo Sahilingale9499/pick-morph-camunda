@@ -10,6 +10,7 @@ import com.temporallearn.spring_temporal.repository.AeOrdersMappingRepository;
 import com.temporallearn.spring_temporal.repository.TransactionStatusRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -39,10 +40,22 @@ public class AeOrderPersistenceService {
 
     /**
      * Persists the parent PICK order and each PICK_LINE child, plus the mapping rows.
+     * Idempotent: skips if an AeOrder with the same externalServiceRequestId already exists.
+     * Transactional: all-or-nothing — partial writes are rolled back on failure.
      *
      * @throws RuntimeException if serialization or DB write fails
      */
+    @Transactional
     public void saveAeOrder(AePickListRequest request) {
+        // Idempotency: skip if already persisted (Kafka redelivery, race condition)
+        Optional<AeOrder> existing = aeOrderRepository
+                .findByExternalServiceRequestId(request.getExternalServiceRequestId());
+        if (existing.isPresent()) {
+            log.warn("AeOrder already exists for externalServiceRequestId: {} — skipping",
+                    request.getExternalServiceRequestId());
+            return;
+        }
+
         LocalDateTime now = LocalDateTime.now();
         try {
             // 1. Save parent
@@ -87,17 +100,14 @@ public class AeOrderPersistenceService {
     /**
      * Persists or updates the transaction status for the given txId.
      * No-op if txId is null or empty.
+     * Exceptions propagate to the caller so constraint violations are visible.
      */
     public void saveTransactionStatus(String txId, String pickId, String status) {
         if (txId == null || txId.isEmpty()) {
             return;
         }
-        try {
-            TransactionStatus ts = new TransactionStatus(txId, pickId, status, Instant.now());
-            transactionStatusRepository.save(ts);
-        } catch (Exception e) {
-            log.warn("Failed to persist transaction status {} for txId: {}", status, txId, e);
-        }
+        TransactionStatus ts = new TransactionStatus(txId, pickId, status, Instant.now());
+        transactionStatusRepository.save(ts);
     }
 
     /**

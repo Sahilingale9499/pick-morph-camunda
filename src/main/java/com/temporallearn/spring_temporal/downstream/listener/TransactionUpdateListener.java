@@ -54,6 +54,11 @@ public class TransactionUpdateListener {
             return;
         }
 
+        if (transactionUpdate.getPickId() == null || transactionUpdate.getPickId().isBlank()) {
+            log.error("Received transaction update with null/blank pickId — dropping");
+            return;
+        }
+
         log.info("Received transaction update | pickId: {} | transactionId: {} | command: {} | status: {}",
                 transactionUpdate.getPickId(),
                 transactionUpdate.getTransactionId(),

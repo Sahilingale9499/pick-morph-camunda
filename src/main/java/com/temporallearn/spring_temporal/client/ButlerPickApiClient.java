@@ -49,6 +49,11 @@ public class ButlerPickApiClient {
             }
             JsonNode node = objectMapper.readTree(raw);
             log.debug("Order node data fetched for orderId: {} | response: {}", orderId, raw);
+            // Unwrap orderData wrapper if present
+            JsonNode orderData = node.path("orderData");
+            if (!orderData.isMissingNode()) {
+                return orderData;
+            }
             return node;
         } catch (Exception e) {
             log.warn("Failed to fetch order node data for orderId: {} — {}", orderId, e.getMessage());

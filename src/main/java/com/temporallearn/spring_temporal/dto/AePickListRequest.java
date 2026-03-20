@@ -2,6 +2,7 @@ package com.temporallearn.spring_temporal.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import lombok.Builder;
 import lombok.Data;
 import java.util.List;
@@ -9,6 +10,7 @@ import java.util.List;
 @Data
 @Builder
 @JsonInclude(JsonInclude.Include.ALWAYS)
+@JsonPropertyOrder({"externalServiceRequestId", "serviceRequests", "fulfillmentArea", "attributes", "type"})
 public class AePickListRequest {
 
     private String externalServiceRequestId;
@@ -18,6 +20,7 @@ public class AePickListRequest {
     private String type;
 
     @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    @JsonPropertyOrder({"externalServiceRequestId", "attributes", "expectations", "type"})
     public static class AeServiceRequestLine {
         private String externalServiceRequestId;
         private AeServiceRequestLineAttributes attributes;
@@ -71,7 +74,10 @@ public class AePickListRequest {
     }
 
     @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    @JsonPropertyOrder({"lot_id", "filter_parameters", "barcodes", "product_sku", "package_parameters"})
     public static class AeProductAttributes {
+        @JsonProperty("lot_id")
+        private String lotId;
         @JsonProperty("filter_parameters")
         private List<String> filterParameters;
         private List<String> barcodes;
@@ -79,12 +85,13 @@ public class AePickListRequest {
         private String productSku;
         @JsonProperty("package_parameters")
         private List<String> packageParameters;
-        @JsonProperty("lot_id")
-        private String lotId;
     }
 
     @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    @JsonPropertyOrder({"skipStandardPickProcess", "order_options", "simple_priority"})
     public static class AeTopLevelAttributes {
+        @JsonProperty("skipStandardPickProcess")
+        private boolean skipStandardPickProcess;
         @JsonProperty("order_options")
         private AeOrderOptions orderOptions;
         @JsonProperty("simple_priority")

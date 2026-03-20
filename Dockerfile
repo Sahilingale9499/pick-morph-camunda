@@ -1,12 +1,12 @@
 # Build stage
-FROM maven:3.9-eclipse-temurin-17 AS build
+FROM --platform=linux/amd64 maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /app
 COPY pom.xml .
 COPY src ./src
 RUN mvn clean package -DskipTests
 
 # Runtime stage - using standard JRE (supports ARM64/Apple Silicon)
-FROM eclipse-temurin:17-jre
+FROM --platform=linux/amd64 eclipse-temurin:17-jre
 WORKDIR /app
 
 # Add non-root user for security (debian-style)

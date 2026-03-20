@@ -5,6 +5,7 @@ import com.temporallearn.spring_temporal.dto.SrmsPickListResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.camunda.bpm.engine.MismatchingMessageCorrelationException;
 import org.camunda.bpm.engine.RuntimeService;
+import org.camunda.bpm.engine.runtime.ProcessInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -24,7 +25,11 @@ import org.springframework.stereotype.Service;
  * Field mapping:
  *   externalServiceRequestId → pickId (process variable used for correlation)
  *   status "SUCCESS"/"FAILURE" → validationSuccess process variable
+ *   serviceRequestId → validated against stored orderId from pick-instruction.requests
  *   errorCode, message → stored as process variables for observability
+ *
+ * Idempotency: pre-checks process existence before correlation; try-catch handles
+ * the race where another thread correlates between check and correlate.
  */
 @Slf4j
 @Service
@@ -50,15 +55,56 @@ public class PickListResponseListener {
             return;
         }
 
+        // --- Field validation ---
+
         String pickId = srmsResponse.getExternalServiceRequestId();
-        if (pickId == null) {
-            log.error("Received SRMS response with null externalServiceRequestId — dropping message");
+        if (pickId == null || pickId.isBlank()) {
+            log.error("Received SRMS response with null/blank externalServiceRequestId — dropping message");
             return;
         }
 
-        boolean success = "SUCCESS".equalsIgnoreCase(srmsResponse.getStatus());
+        String status = srmsResponse.getStatus();
+        if (status == null || status.isBlank()) {
+            log.error("Received SRMS response with null/blank status for pickId: {} — dropping", pickId);
+            return;
+        }
+        if (!"SUCCESS".equalsIgnoreCase(status) && !"FAILURE".equalsIgnoreCase(status)) {
+            log.error("Received SRMS response with invalid status: '{}' for pickId: {} — must be SUCCESS or FAILURE — dropping",
+                    status, pickId);
+            return;
+        }
+
+        if (srmsResponse.getServiceRequestId() == null) {
+            log.error("Received SRMS response with null serviceRequestId for pickId: {} — dropping", pickId);
+            return;
+        }
+
+        // --- Pre-check: does a process instance exist for this pickId? ---
+
+        ProcessInstance pi = runtimeService.createProcessInstanceQuery()
+                .variableValueEquals("pickId", pickId)
+                .singleResult();
+        if (pi == null) {
+            log.warn("pick-list.response for pickId: {} — no process instance found (out-of-order or stale) — dropping",
+                    pickId);
+            return;
+        }
+
+        // --- Cross-reference: validate serviceRequestId matches the stored orderId ---
+
+        String storedOrderId = (String) runtimeService.getVariable(pi.getId(), "orderId");
+        if (storedOrderId != null
+                && !storedOrderId.equals(String.valueOf(srmsResponse.getServiceRequestId()))) {
+            log.error("serviceRequestId mismatch for pickId: {} — expected orderId: {}, got: {} — dropping",
+                    pickId, storedOrderId, srmsResponse.getServiceRequestId());
+            return;
+        }
+
+        // --- Correlate message to the waiting process ---
+
+        boolean success = "SUCCESS".equalsIgnoreCase(status);
         log.info("SRMS pick-list.response | pickId: {} | status: {} | errorCode: {}",
-                pickId, srmsResponse.getStatus(), srmsResponse.getErrorCode());
+                pickId, status, srmsResponse.getErrorCode());
 
         String failureReason = success ? null
                 : (srmsResponse.getErrorCode() != null
@@ -75,14 +121,17 @@ public class PickListResponseListener {
                     .setVariable("failureReason", failureReason)
                     .correlate();
 
-            log.info("PickListResponseMessage correlated successfully for orderId: {} | success: {}",
+            log.info("PickListResponseMessage correlated successfully for pickId: {} | success: {}",
                     pickId, success);
 
         } catch (MismatchingMessageCorrelationException e) {
-            log.error("No process instance found waiting for PickListResponseMessage for orderId: {}. " +
-                    "SRMS response dropped.", pickId);
+            // Race condition: another message correlated between our pre-check and correlate(),
+            // or process already moved past waitForValidation. Camunda guarantees exactly-once
+            // correlation per message subscription, so this is safe to skip.
+            log.info("PickListResponseMessage already processed for pickId: {} — duplicate or race (safe to skip)",
+                    pickId);
         } catch (Exception e) {
-            log.error("Failed to correlate PickListResponseMessage for orderId: {} | error: {}",
+            log.error("Failed to correlate PickListResponseMessage for pickId: {} | error: {}",
                     pickId, e.getMessage(), e);
         }
     }

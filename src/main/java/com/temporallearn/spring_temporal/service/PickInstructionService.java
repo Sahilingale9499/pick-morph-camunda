@@ -10,8 +10,8 @@ import com.temporallearn.spring_temporal.model.TransactionStatus;
 import com.greyorange.butler.core.grpc.GetPickInstructionStatusResponse;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -31,19 +31,20 @@ public class PickInstructionService {
     private final AeOrderBuilderService aeOrderBuilderService;
     private final AeOrderPersistenceService aeOrderPersistenceService;
     private final ButlerCoreGrpcClient butlerCoreGrpcClient;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final OutboxService outboxService;
 
-    private static final int UPDATE_MAX_RETRIES = 3;
-    private static final long RETRY_BASE_DELAY_MS = 1000L;
+    private static final int UPDATE_MAX_RETRIES = 2;
+    private static final long RETRY_BASE_DELAY_MS = 500L;
+    private static final long RETRY_MAX_DELAY_MS = 2000L;
 
     public PickInstructionService(AeOrderBuilderService aeOrderBuilderService,
                                   AeOrderPersistenceService aeOrderPersistenceService,
                                   ButlerCoreGrpcClient butlerCoreGrpcClient,
-                                  KafkaTemplate<String, Object> kafkaTemplate) {
+                                  OutboxService outboxService) {
         this.aeOrderBuilderService = aeOrderBuilderService;
         this.aeOrderPersistenceService = aeOrderPersistenceService;
         this.butlerCoreGrpcClient = butlerCoreGrpcClient;
-        this.kafkaTemplate = kafkaTemplate;
+        this.outboxService = outboxService;
     }
 
     /**
@@ -53,11 +54,24 @@ public class PickInstructionService {
      * Throws RuntimeException (aborting the Camunda task) if butler_server cannot be
      * reached or the matching orderline is not found — no AE order is created in that case.
      */
+    @Transactional
     public void publishPickListRequest(PickInstructionRequestMessage msg) {
         AePickListRequest request = aeOrderBuilderService.build(msg);
         aeOrderPersistenceService.saveAeOrder(request);
-        kafkaTemplate.send("pick-list.requests", msg.getId(), request);
-        log.info("Persisted and published AePickListRequest to pick-list.requests for pickId: {}", msg.getId());
+        outboxService.save("pick-list.requests", msg.getId(), request);
+        log.info("Persisted AePickListRequest and queued to pick-list.requests for pickId: {}", msg.getId());
+    }
+
+    /**
+     * Publish pick-instruction.response to notify butler_server of validation outcome.
+     */
+    @Transactional
+    public void publishPickInstructionResponse(String pickId, boolean success) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", pickId);
+        response.put("status", success ? "success" : "failure");
+        outboxService.save("pick-instruction.response", pickId, response);
+        log.info("Queued pick-instruction.response for pickId: {} | success: {}", pickId, success);
     }
 
     /**
@@ -97,7 +111,7 @@ public class PickInstructionService {
 
             // Retriable and attempts remain → back off and retry
             if (result.isRetriable() && attempt <= UPDATE_MAX_RETRIES) {
-                long backoff = RETRY_BASE_DELAY_MS * (1L << (attempt - 1));
+                long backoff = Math.min(RETRY_BASE_DELAY_MS * (1L << (attempt - 1)), RETRY_MAX_DELAY_MS);
                 log.warn("Retriable error from Butler Core — attempt {}/{}; backing off {} ms; txId: {}. Error: {}",
                         attempt, UPDATE_MAX_RETRIES, backoff, txId, result.getMessage());
                 try {
@@ -157,19 +171,20 @@ public class PickInstructionService {
     /**
      * Send transaction details to Kafka for downstream consumers.
      */
+    @Transactional
     public void sendTransactionKafkaEvent(TransactionUpdate transactionUpdate) {
         log.info("Sending transaction event to Kafka for pickId: {}, transactionId: {}",
                 transactionUpdate.getPickId(), transactionUpdate.getTransactionId());
-        kafkaTemplate.send("transaction-events-topic",
-                transactionUpdate.getPickId(),
-                transactionUpdate);
-        log.info("Published Transaction Event to Kafka: {}", transactionUpdate.getTransactionId());
+        outboxService.save("transaction-events-topic", transactionUpdate.getPickId(), transactionUpdate);
+        log.info("Queued Transaction Event for pickId: {}", transactionUpdate.getPickId());
     }
 
     /**
      * Process the transaction update — duplicate detection, in-progress tracking, completion check.
      * Returns true if the pick is now complete.
+     * Transactional to ensure atomic duplicate detection (find + save).
      */
+    @Transactional
     public boolean processTransactionUpdate(String pickId, TransactionUpdate transactionUpdate) {
         log.info("Processing transaction update for pickId: {}, transactionId: {}, type: {}",
                 pickId, transactionUpdate.getTransactionId(), transactionUpdate.getTransactionType());
@@ -219,7 +234,7 @@ public class PickInstructionService {
                     return false;
                 }
                 try {
-                    Thread.sleep(500L * attempts);
+                    Thread.sleep(Math.min(500L * attempts, RETRY_MAX_DELAY_MS));
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     log.warn("Interrupted during processing backoff", ie);
@@ -251,6 +266,7 @@ public class PickInstructionService {
     /**
      * Run workflow completion cleanup: status validation against Butler Core and Kafka audit event.
      */
+    @Transactional
     public void onWorkflowComplete(String pickId, String internalStatus, String failureReason) {
         log.info("Workflow completing for pickId: {} — running cleanup and validation. internalStatus: {}",
                 pickId, internalStatus);
@@ -301,8 +317,8 @@ public class PickInstructionService {
             auditEvent.put("externalIsComplete", externalIsComplete);
             auditEvent.put("failureReason", failureReason);
             auditEvent.put("timestamp", Instant.now().toString());
-            kafkaTemplate.send("workflow-complete-events-topic", pickId, auditEvent);
-            log.info("Published workflow-complete audit event to Kafka for pickId: {}", pickId);
+            outboxService.save("workflow-complete-events-topic", pickId, auditEvent);
+            log.info("Queued workflow-complete audit event for pickId: {}", pickId);
         } catch (Exception e) {
             log.warn("Failed to publish workflow-complete audit event for pickId: {}. Non-critical.", pickId, e);
         }

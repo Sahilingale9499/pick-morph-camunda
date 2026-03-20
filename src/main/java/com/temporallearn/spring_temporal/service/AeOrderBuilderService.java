@@ -57,8 +57,8 @@ public class AeOrderBuilderService {
         }
 
         // Extract top-level order fields
-        List<String> bintags = extractStringList(orderNode.path("properties").path("bintags").get(0));
-        String simplePriority = extractString(orderNode.path("properties").path("simple_priority").get(0));
+        List<String> bintags = extractStringList(orderNode.path("properties").path("bintags"));
+        String simplePriority = extractString(orderNode.path("properties").path("simple_priority"));
 
         // Extract orderline product attributes and behaviour
         JsonNode productAttrs = matchedChild.path("expectations").path("product_attributes");
@@ -149,8 +149,13 @@ public class AeOrderBuilderService {
         String productSku = null;
         if (filterParams != null) {
             for (String fp : filterParams) {
-                if (fp.startsWith("product_sku='") && fp.endsWith("'")) {
-                    productSku = fp.substring("product_sku='".length(), fp.length() - 1);
+                // matches both "product_sku='711'" and "product_sku = '711'"
+                if (fp.trim().startsWith("product_sku")) {
+                    int first = fp.indexOf('\'');
+                    int last = fp.lastIndexOf('\'');
+                    if (first >= 0 && last > first) {
+                        productSku = fp.substring(first + 1, last);
+                    }
                     break;
                 }
             }
@@ -172,6 +177,7 @@ public class AeOrderBuilderService {
         String resolvedPriority = (simplePriority != null && !simplePriority.isBlank())
                 ? simplePriority : "normal";
         return AePickListRequest.AeTopLevelAttributes.builder()
+                .skipStandardPickProcess(true)
                 .simplePriority(resolvedPriority)
                 .orderOptions(buildOrderOptions(msg, bintags, behaviours, destinationGroup))
                 .build();
