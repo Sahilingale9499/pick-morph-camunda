@@ -35,7 +35,7 @@
     <!-- ─── Wait for Validation Result (Message Catch) ─── -->
     <intermediateCatchEvent id="waitForValidation" name="Wait for Validation">
       <incoming>flow_publishOrder_to_waitValidation</incoming>
-      <outgoing>flow_waitValidation_to_publishResponse</outgoing>
+      <outgoing>flow_waitValidation_to_validationGw</outgoing>
       <messageEventDefinition id="MsgDef_validation" messageRef="Message_ValidationResult"/>
     </intermediateCatchEvent>
 
@@ -43,34 +43,34 @@
     <serviceTask id="publishPickInstructionResponseTask"
                  name="Publish pick-instruction.response"
                  camunda:delegateExpression="${publishPickInstructionResponseDelegate}">
-      <incoming>flow_waitValidation_to_publishResponse</incoming>
-      <outgoing>flow_publishResponse_to_validationGw</outgoing>
+      <incoming>flow_validationGw_to_publishResponse</incoming>
+      <outgoing>flow_publishResponse_to_checkComplete</outgoing>
     </serviceTask>
 
     <!-- ─── Validation Gateway ─── -->
-    <exclusiveGateway id="validationGateway" name="Validation OK?" default="flow_validationGw_to_checkComplete">
-      <incoming>flow_publishResponse_to_validationGw</incoming>
+    <exclusiveGateway id="validationGateway" name="Validation OK?" default="flow_validationGw_to_publishResponse">
+      <incoming>flow_waitValidation_to_validationGw</incoming>
       <outgoing>flow_validationGw_failed</outgoing>
-      <outgoing>flow_validationGw_to_checkComplete</outgoing>
+      <outgoing>flow_validationGw_to_publishResponse</outgoing>
     </exclusiveGateway>
 
-    <!-- ─── [FAIL PATH] Terminate AE order in PostgreSQL ─── -->
-    <serviceTask id="terminateAeOrderTask"
-                 name="Terminate AE Order"
-                 camunda:delegateExpression="${terminateAeOrderDelegate}">
+    <!-- ─── [FAIL PATH] Publish failure response + delete AE order (atomic) ─── -->
+    <serviceTask id="handleValidationFailureTask"
+                 name="Handle Validation Failure"
+                 camunda:delegateExpression="${handleValidationFailureDelegate}">
       <incoming>flow_validationGw_failed</incoming>
-      <outgoing>flow_terminateAeOrder_to_end</outgoing>
+      <outgoing>flow_handleFailure_to_end</outgoing>
     </serviceTask>
 
     <endEvent id="endValidationFailed" name="End (Validation Failed)">
-      <incoming>flow_terminateAeOrder_to_end</incoming>
+      <incoming>flow_handleFailure_to_end</incoming>
     </endEvent>
 
     <!-- ─── Check if Pick Instruction Already Complete ─── -->
     <serviceTask id="checkCompleteTask"
                  name="Check PI Complete?"
                  camunda:delegateExpression="${checkPickInstructionCompleteDelegate}">
-      <incoming>flow_validationGw_to_checkComplete</incoming>
+      <incoming>flow_publishResponse_to_checkComplete</incoming>
       <outgoing>flow_checkComplete_to_alreadyCompleteGw</outgoing>
     </serviceTask>
 
@@ -283,31 +283,31 @@
                   sourceRef="publishOrderTask"
                   targetRef="waitForValidation"/>
 
-    <!-- Wait for Validation → Publish pick-instruction.response -->
-    <sequenceFlow id="flow_waitValidation_to_publishResponse"
+    <!-- Wait for Validation → Validation Gateway -->
+    <sequenceFlow id="flow_waitValidation_to_validationGw"
                   sourceRef="waitForValidation"
-                  targetRef="publishPickInstructionResponseTask"/>
-
-    <!-- Publish pick-instruction.response → Validation Gateway -->
-    <sequenceFlow id="flow_publishResponse_to_validationGw"
-                  sourceRef="publishPickInstructionResponseTask"
                   targetRef="validationGateway"/>
 
     <!-- Validation Gateway → FAILED (validationSuccess == false) -->
     <sequenceFlow id="flow_validationGw_failed"
                   sourceRef="validationGateway"
-                  targetRef="terminateAeOrderTask">
+                  targetRef="handleValidationFailureTask">
       <conditionExpression xsi:type="tFormalExpression">${validationSuccess == false}</conditionExpression>
     </sequenceFlow>
 
-    <!-- Validation Gateway → Check Complete (default: validationSuccess == true) -->
-    <sequenceFlow id="flow_validationGw_to_checkComplete"
+    <!-- Validation Gateway → Publish pick-instruction.response (default: validationSuccess == true) -->
+    <sequenceFlow id="flow_validationGw_to_publishResponse"
                   sourceRef="validationGateway"
+                  targetRef="publishPickInstructionResponseTask"/>
+
+    <!-- Publish pick-instruction.response → Check Complete -->
+    <sequenceFlow id="flow_publishResponse_to_checkComplete"
+                  sourceRef="publishPickInstructionResponseTask"
                   targetRef="checkCompleteTask"/>
 
-    <!-- Terminate AE Order → End (Validation Failed) -->
-    <sequenceFlow id="flow_terminateAeOrder_to_end"
-                  sourceRef="terminateAeOrderTask"
+    <!-- Handle Validation Failure → End (Validation Failed) -->
+    <sequenceFlow id="flow_handleFailure_to_end"
+                  sourceRef="handleValidationFailureTask"
                   targetRef="endValidationFailed"/>
 
     <!-- Check Complete → Already Complete Gateway -->
@@ -515,7 +515,7 @@
         <dc:Bounds x="635" y="75" width="50" height="50"/>
       </bpmndi:BPMNShape>
 
-      <bpmndi:BPMNShape id="terminateAeOrderTask_di" bpmnElement="terminateAeOrderTask">
+      <bpmndi:BPMNShape id="handleValidationFailureTask_di" bpmnElement="handleValidationFailureTask">
         <dc:Bounds x="600" y="160" width="120" height="80"/>
       </bpmndi:BPMNShape>
 

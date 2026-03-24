@@ -17,49 +17,24 @@ services:
       retries: 5
     restart: unless-stopped
 
-  kafka:
-    image: apache/kafka:latest
-    hostname: pick-morph-kafka
-    ports:
-      - "9092:9092"
-      - "9095:9094"
-      - "29092:29092"
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093,BUTLER://0.0.0.0:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://pick-morph-kafka:9092,EXTERNAL://host.docker.internal:29092,BUTLER://localhost:9094
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,BUTLER:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@pick-morph-kafka:9093
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-
   spring-camunda:
     build: .
     ports:
       - "9191:9191"
     environment:
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: pick-morph-kafka:9092
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/app_db
       SPRING_DATASOURCE_USERNAME: appuser
       SPRING_DATASOURCE_PASSWORD: apppassword
       BUTLER_GRPC_ADDR: host.docker.internal:9090
       BUTLER_PICK_GRPC_ADDRESS: host.docker.internal:50051
       BUTLER_PICK_GRPC_MOCK_ENABLED: "false"
+      KAFKA_TENANT_ID: gor
+    networks:
+      - default
+      - downloads_default
     depends_on:
       postgres:
-        condition: service_healthy
-      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9191/actuator/health || exit 1"]
@@ -79,6 +54,10 @@ services:
       spring-camunda:
         condition: service_healthy
     restart: unless-stopped
+
+networks:
+  downloads_default:
+    external: true
 
 volumes:
   postgres_data:
