@@ -2,8 +2,8 @@ package com.temporallearn.spring_temporal.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.temporallearn.spring_temporal.client.ButlerPickApiClient;
 import com.temporallearn.spring_temporal.client.LocationApiClient;
+import com.temporallearn.spring_temporal.grpc.ButlerPickOrderGrpcClient;
 import com.temporallearn.spring_temporal.dto.AePickListRequest;
 import com.temporallearn.spring_temporal.dto.PickInstructionRequestMessage;
 import lombok.extern.slf4j.Slf4j;
@@ -22,14 +22,14 @@ import java.util.List;
 @Slf4j
 public class AeOrderBuilderService {
 
-    private final ButlerPickApiClient butlerPickApiClient;
+    private final ButlerPickOrderGrpcClient butlerPickOrderGrpcClient;
     private final LocationApiClient locationApiClient;
     private final ObjectMapper objectMapper;
 
-    public AeOrderBuilderService(ButlerPickApiClient butlerPickApiClient,
+    public AeOrderBuilderService(ButlerPickOrderGrpcClient butlerPickOrderGrpcClient,
                                  LocationApiClient locationApiClient,
                                  ObjectMapper objectMapper) {
-        this.butlerPickApiClient = butlerPickApiClient;
+        this.butlerPickOrderGrpcClient = butlerPickOrderGrpcClient;
         this.locationApiClient = locationApiClient;
         this.objectMapper = objectMapper;
     }
@@ -41,8 +41,7 @@ public class AeOrderBuilderService {
      * @throws RuntimeException if butler_server is unreachable or the orderline is not found
      */
     public AePickListRequest build(PickInstructionRequestMessage msg) {
-        // Fetch order node data from butler_server — fatal if unavailable
-        JsonNode orderNode = butlerPickApiClient.getOrderNodeData(msg.getOrderId());
+        JsonNode orderNode = butlerPickOrderGrpcClient.getOrderData(msg.getOrderId());
         if (orderNode == null) {
             throw new RuntimeException(
                     "Failed to fetch order node data from butler_server for orderId: " + msg.getOrderId());

@@ -94,7 +94,7 @@ public class PickListResponseListener {
 
         String storedOrderId = (String) runtimeService.getVariable(pi.getId(), "orderId");
         if (storedOrderId != null
-                && !storedOrderId.equals(String.valueOf(srmsResponse.getServiceRequestId()))) {
+                && !storedOrderId.equals(srmsResponse.getServiceRequestId())) {
             log.error("serviceRequestId mismatch for pickId: {} — expected orderId: {}, got: {} — dropping",
                     pickId, storedOrderId, srmsResponse.getServiceRequestId());
             return;

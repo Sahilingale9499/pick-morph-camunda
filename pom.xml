@@ -56,6 +56,11 @@
 			<artifactId>protobuf-java</artifactId>
 			<version>${protobuf.version}</version>
 		</dependency>
+		<!-- Needed for JsonFormat.printer().print(Struct) → JSON string -->
+		<dependency>
+			<groupId>com.google.protobuf</groupId>
+			<artifactId>protobuf-java-util</artifactId>
+		</dependency>
 		<!-- gRPC dependencies -->
 		<dependency>
 			<groupId>io.grpc</groupId>
