@@ -11,6 +11,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "ae_orders_mapping")
 @Data
@@ -28,4 +30,10 @@ public class AeOrdersMapping {
 
     @Column(name = "child_external_service_request_id", nullable = false)
     private String childExternalServiceRequestId;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
 }

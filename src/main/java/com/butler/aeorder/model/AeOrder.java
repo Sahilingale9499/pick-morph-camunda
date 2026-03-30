@@ -59,6 +59,16 @@ public class AeOrder {
     @Column(name = "actuals", columnDefinition = "JSONB")
     private String actuals;
 
+    @Column(name = "is_deleted", nullable = false)
+    private Boolean isDeleted;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "stages", columnDefinition = "JSONB")
+    private String stages;
+
+    @Column(name = "on_hold", nullable = false)
+    private Boolean onHold;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
