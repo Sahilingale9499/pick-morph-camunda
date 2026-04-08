@@ -28,7 +28,7 @@ public class PickInstruction {
     private String uom;
 
     @JsonProperty("tpid")
-    private String tpid;
+    private int tpid;
 
     @JsonProperty("item_id")
     private String itemId;

@@ -1,22 +1,15 @@
-# Build stage
-FROM maven:3.9-eclipse-temurin-17 AS build
-WORKDIR /app
-COPY pom.xml .
-COPY src ./src
-RUN mvn clean package -DskipTests
-
-# Runtime stage - using standard JRE (supports ARM64/Apple Silicon)
-FROM eclipse-temurin:17-jre
+# Runtime stage only — JAR is pre-built locally via ./mvnw clean package -DskipTests
+FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
-# Add non-root user for security (debian-style)
+# Add non-root user for security
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 # Install curl for health checks
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Copy the built jar
-COPY --from=build /app/target/*.jar app.jar
+# Copy the pre-built jar
+COPY target/*.jar app.jar
 
 # Set ownership
 RUN chown -R appuser:appgroup /app

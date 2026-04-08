@@ -429,7 +429,7 @@ public class PickInstructionService {
             String itemPickedTxId = pickInstructionId + "_" + internalOrderId;
 
             ItemPickedEvent.PickedItemInfo itemInfo = ItemPickedEvent.PickedItemInfo.builder()
-                    .tpid(Integer.parseInt(pi.getTpid()))
+                    .tpid(pi.getTpid())
                     .itemUid(pi.getItemId())
                     .uom(pi.getUom())
                     .pickedQty(pickedQty)
@@ -479,9 +479,9 @@ public class PickInstructionService {
                     .orderlineId(sr.getExternalServiceRequestId())
                     .state(state)
                     .subState(subState)
-                    .transaction(objectMapper.convertValue(tx.getContainerAttributes(), new TypeReference<Map<String, Object>>() {}))
+                    .transactions(objectMapper.convertValue(tx.getContainerAttributes(), new TypeReference<Map<String, Object>>() {}))
                     .build();
-            outboxService.save(orderUpdateEventsTopic, pickInstructionId, update, "order_update");
+            outboxService.save(orderUpdateEventsTopic, pickInstructionId, update, "update");
             log.info("Enqueued OrderUpdateEvent (created container) | pickInstructionId: {} | txId: {} | orderline: {}",
                     pickInstructionId, tx.getTransactionId(), sr.getExternalServiceRequestId());
         } catch (Exception e) {
@@ -501,6 +501,7 @@ public class PickInstructionService {
      * not from the AE pick-list event.
      */
     @Transactional
+    @SuppressWarnings("unchecked")
     public void enqueueOrderUpdate(String pickInstructionId, PickInstruction pi, PickListEvent event) {
         PickListEvent.Payload payload = event.getPayload();
         if (payload == null || payload.getServiceRequests() == null) return;
@@ -510,19 +511,50 @@ public class PickInstructionService {
 
         for (PickListEvent.ServiceRequest sr : payload.getServiceRequests()) {
             try {
-                String orderUpdateTxId = buildTransactionId(pickInstructionId, sr.getActuals());
+                int allocatedQty = 0;
+                if (sr.getActuals() instanceof Map) {
+                    List<?> containers = (List<?>) ((Map<?, ?>) sr.getActuals()).get("containers");
+                    if (containers != null) {
+                        for (Object c : containers) {
+                            if (c instanceof Map) {
+                                Object attrs = ((Map<?, ?>) c).get("containerAttributes");
+                                if (attrs instanceof Map) {
+                                    Object qty = ((Map<?, ?>) attrs).get("qty_to_be_picked");
+                                    if (qty instanceof Number) allocatedQty += ((Number) qty).intValue();
+                                }
+                            }
+                        }
+                    }
+                }
+                List<Object> transactionList = buildTransactionList(sr.getTransactions(), allocatedQty, pi.getQty(), pickInstructionId, pi.getPpsId(), pi.getItemId(), pi.getTpid(), pi.getSlotLocation());
+
                 OrderUpdateEvent update = OrderUpdateEvent.builder()
                         .pickInstructionId(pickInstructionId)
-                        .transactionId(orderUpdateTxId)
                         .orderId(pi.getOrderId())
                         .orderlineId(pi.getOrderlineId())
                         .state(state)
                         .subState(subState)
-                        .transaction(extractContainerAttributes(sr.getActuals()))
+                        .transactions(transactionList.isEmpty() ? null : transactionList)
                         .build();
-                outboxService.save(orderUpdateEventsTopic, pickInstructionId, update, "order_update");
+                outboxService.save(orderUpdateEventsTopic, pickInstructionId, update, "update");
                 log.info("Enqueued OrderUpdateEvent | pickInstructionId: {} | orderline: {} | state: {} | sub_state: {}",
                         pickInstructionId, sr.getExternalServiceRequestId(), state, subState);
+
+                if ("fully_palletized".equals(subState)) {
+                    Map<String, Object> deleteTransaction = new LinkedHashMap<>();
+                    deleteTransaction.put("transaction_id", pickInstructionId);
+
+                    OrderUpdateEvent deleteUpdate = OrderUpdateEvent.builder()
+                            .pickInstructionId(pickInstructionId)
+                            .orderId(pi.getOrderId())
+                            .orderlineId(pi.getOrderlineId())
+                            .state(state)
+                            .subState(subState)
+                            .transactions(List.of(deleteTransaction))
+                            .build();
+                    outboxService.save(orderUpdateEventsTopic, pickInstructionId, deleteUpdate, "delete");
+                    log.info("Enqueued delete OrderUpdateEvent | pickInstructionId: {}", pickInstructionId);
+                }
             } catch (Exception e) {
                 log.warn("Failed to enqueue OrderUpdateEvent for pickInstructionId: {}, orderline: {} — non-critical",
                         pickInstructionId, sr.getExternalServiceRequestId(), e);
@@ -530,52 +562,46 @@ public class PickInstructionService {
         }
     }
 
-    /**
-     * Extracts containerAttributes from the first actuals container.
-     * Returns null (omitted via @JsonInclude) when no containers are present.
-     */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> extractContainerAttributes(Object actuals) {
-        try {
-            if (actuals instanceof Map) {
-                List<?> containers = (List<?>) ((Map<?, ?>) actuals).get("containers");
-                if (containers != null && !containers.isEmpty()) {
-                    Map<?, ?> first = (Map<?, ?>) containers.get(0);
-                    Object attrs = first.get("containerAttributes");
-                    if (attrs instanceof Map) {
-                        return (Map<String, Object>) attrs;
-                    }
-                }
+    private List<Object> buildTransactionList(List<PickListEvent.Transaction> transactions,
+                                               int allocatedQty,
+                                               int totalQty,
+                                               String pickInstructionId,
+                                               int ppsId,
+                                               String itemId,
+                                               int tpid,
+                                               String slotLocation) {
+        List<Object> list = new ArrayList<>();
+        if (transactions != null) {
+            for (PickListEvent.Transaction tx : transactions) {
+                PickListEvent.ContainerAttributes attrs = tx.getContainerAttributes();
+                if (attrs == null) continue;
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("transaction_id", pickInstructionId + "_" + attrs.getInternalOrderId());
+                entry.put("qty_to_be_picked", attrs.getQtyToBePicked());
+                entry.put("qty_picked", attrs.getQtyPicked());
+                entry.put("status", attrs.getStatus());
+                entry.put("pps_id", attrs.getPpsId());
+                entry.put("bot_id", attrs.getBotId());
+                entry.put("internal_order_id", attrs.getInternalOrderId());
+                entry.put("item_id", itemId);
+                entry.put("tpid", tpid);
+                list.add(entry);
             }
-        } catch (Exception e) {
-            log.debug("Could not extract containerAttributes from actuals");
         }
-        return null;
-    }
-
-    /**
-     * Builds a transaction_id as "{pickInstructionId}_{internalOrderId}" when internal_order_id
-     * is present in the first actuals container; falls back to "undefined".
-     */
-    @SuppressWarnings("unchecked")
-    private String buildTransactionId(String pickInstructionId, Object actuals) {
-        try {
-            if (actuals instanceof Map) {
-                List<?> containers = (List<?>) ((Map<?, ?>) actuals).get("containers");
-                if (containers != null && !containers.isEmpty()) {
-                    Map<?, ?> containerAttrs = (Map<?, ?>) ((Map<?, ?>) containers.get(0)).get("containerAttributes");
-                    if (containerAttrs != null) {
-                        Object internalOrderId = containerAttrs.get("internal_order_id");
-                        if (internalOrderId != null) {
-                            return pickInstructionId + "_" + internalOrderId;
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Could not extract internal_order_id from actuals for pickInstructionId: {} — using id only", pickInstructionId);
+        int remainingQty = totalQty - allocatedQty;
+        if (remainingQty > 0) {
+            Map<String, Object> remainder = new LinkedHashMap<>();
+            remainder.put("transaction_id", pickInstructionId);
+            remainder.put("qty_to_be_picked", remainingQty);
+            remainder.put("qty_picked", 0);
+            remainder.put("status", "in_palletization");
+            remainder.put("pps_id", ppsId);
+            remainder.put("location", slotLocation);
+            remainder.put("item_id", itemId);
+            remainder.put("tpid", tpid);
+            list.add(remainder);
         }
-        return "undefined";
+        return list;
     }
 
     private void persistTransactionStatus(String txId, String pickInstructionId, String status,

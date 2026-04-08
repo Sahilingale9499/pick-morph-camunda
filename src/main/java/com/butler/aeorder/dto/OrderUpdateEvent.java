@@ -46,6 +46,6 @@ public class OrderUpdateEvent {
     @JsonProperty("subState")
     private String subState;
 
-    @JsonProperty("transaction")
-    private Object transaction;
+    @JsonProperty("transactions")
+    private Object transactions;
 }
