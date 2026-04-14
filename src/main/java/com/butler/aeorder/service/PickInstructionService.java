@@ -25,10 +25,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Business logic service extracted from PickActivitiesImpl.
@@ -311,40 +314,74 @@ public class PickInstructionService {
             boolean anyTransactions = false;
             boolean itemPickedDispatched = false;
             for (PickListEvent.ServiceRequest sr : payload.getServiceRequests()) {
-                if (sr.getTransactions() == null || sr.getTransactions().isEmpty()) continue;
-                for (PickListEvent.Transaction tx : sr.getTransactions()) {
-                    anyTransactions = true;
-                    String txId = tx.getTransactionId();
+                Set<String> processedTxIds = new HashSet<>();
 
-                    // Dedup: skip transactions already processed
-                    if (txId != null && !txId.isEmpty()) {
-                        Optional<TransactionStatus> existing = transactionStatusRepository.findById(txId);
-                        if (existing.isPresent() && "SUCCESS".equals(existing.get().getStatus())) {
-                            log.info("Duplicate txId: {} for pickInstructionId: {} — skipping", txId, pickInstructionId);
+                // Cases A & B — normal transactions[]
+                if (sr.getTransactions() != null) {
+                    for (PickListEvent.Transaction tx : sr.getTransactions()) {
+                        anyTransactions = true;
+                        String txId = tx.getTransactionId();
+
+                        // Dedup: skip transactions already processed
+                        if (txId != null && !txId.isEmpty()) {
+                            Optional<TransactionStatus> existing = transactionStatusRepository.findById(txId);
+                            if (existing.isPresent() && "SUCCESS".equals(existing.get().getStatus())) {
+                                log.info("Duplicate txId: {} for pickInstructionId: {} — skipping", txId, pickInstructionId);
+                                continue;
+                            }
+                            persistTransactionStatus(txId, pickInstructionId, "SUCCESS", tx);
+                        }
+
+                        String containerStatus = tx.getContainerAttributes() != null
+                                ? tx.getContainerAttributes().getStatus() : null;
+                        if (containerStatus == null) {
+                            log.debug("Transaction {} has no containerAttributes.status — skipping dispatch", txId);
                             continue;
                         }
-                        persistTransactionStatus(txId, pickInstructionId, "SUCCESS", tx);
-                    }
 
-                    String containerStatus = tx.getContainerAttributes() != null
-                            ? tx.getContainerAttributes().getStatus() : null;
-                    if (containerStatus == null) {
-                        log.debug("Transaction {} has no containerAttributes.status — skipping dispatch", txId);
-                        continue;
+                        switch (containerStatus.toLowerCase()) {
+                            case "complete" -> {
+                                enqueueItemPickedEventForTransaction(pickInstructionId, tx, pi, "bot", sr.getExceptions());
+                                itemPickedDispatched = true;
+                                if (txId != null) processedTxIds.add(txId);
+                            }
+                            case "unloaded" -> {
+                                enqueueItemPickedEventForTransaction(pickInstructionId, tx, pi, "undefined", sr.getExceptions());
+                                itemPickedDispatched = true;
+                                if (txId != null) processedTxIds.add(txId);
+                            }
+                            default -> log.debug(
+                                    "Transaction {} status '{}' — SR-level order_update handled by enqueueOrderUpdate",
+                                    txId, containerStatus);
+                        }
                     }
+                }
 
-                    switch (containerStatus.toLowerCase()) {
-                        case "complete" -> {
-                            enqueueItemPickedEventForTransaction(pickInstructionId, tx, pi, "bot");
-                            itemPickedDispatched = true;
+                // Case C — exception-only transactions (transactionId not in transactions[])
+                // processedTxIds.add() returns false if already present → prevents duplicates
+                if (sr.getExceptions() != null) {
+                    for (PickListEvent.ExceptionItem ex : sr.getExceptions()) {
+                        String exTxId = ex.getTransactionId();
+                        if (exTxId != null && processedTxIds.add(exTxId)) {
+                            try {
+                                Long internalOrderId = ex.getContainerAttributes() != null
+                                        ? ex.getContainerAttributes().getInternalOrderId() : null;
+                                if (internalOrderId == null) {
+                                    log.warn("No internalOrderId in exception containerAttributes for exTxId: {} — skipping", exTxId);
+                                    continue;
+                                }
+                                String exItemPickedTxId = pickInstructionId + "_" + internalOrderId;
+                                ItemPickedEvent.ExceptionInfo exceptionInfo = buildExceptionInfo(sr.getExceptions(), exTxId);
+                                buildAndSaveItemPickedEvent(pickInstructionId, pi, exItemPickedTxId, null, 0, "bot", exceptionInfo, null, internalOrderId, null);
+                                log.info("Enqueued ItemPickedEvent (exception-only) | pickInstructionId: {} | txId: {} | exTxId: {} | exState: {}",
+                                        pickInstructionId, exItemPickedTxId, exTxId, ex.getState());
+                                itemPickedDispatched = true;
+                                anyTransactions = true;
+                            } catch (Exception e) {
+                                log.warn("Failed to enqueue exception-only ItemPickedEvent for exTxId: {} — non-critical",
+                                        exTxId, e);
+                            }
                         }
-                        case "unloaded" -> {
-                            enqueueItemPickedEventForTransaction(pickInstructionId, tx, pi, "undefined");
-                            itemPickedDispatched = true;
-                        }
-                        default -> log.debug(
-                                "Transaction {} status '{}' — SR-level order_update handled by enqueueOrderUpdate",
-                                txId, containerStatus);
                     }
                 }
             }
@@ -419,7 +456,8 @@ public class PickInstructionService {
     private void enqueueItemPickedEventForTransaction(String pickInstructionId,
                                                       PickListEvent.Transaction tx,
                                                       PickInstruction pi,
-                                                      String danglingArea) {
+                                                      String danglingArea,
+                                                      List<PickListEvent.ExceptionItem> exceptions) {
         try {
             int  pickedQty       = tx.getContainerAttributes() != null ? tx.getContainerAttributes().getQtyPicked() : 0;
             Long internalOrderId = tx.getContainerAttributes() != null ? tx.getContainerAttributes().getInternalOrderId() : null;
@@ -427,29 +465,13 @@ public class PickInstructionService {
                 throw new IllegalStateException("internalOrderId is required but not present in containerAttributes");
             }
             String itemPickedTxId = pickInstructionId + "_" + internalOrderId;
+            String toteId = tx.getContainerAttributes().getToteId();
 
-            ItemPickedEvent.PickedItemInfo itemInfo = ItemPickedEvent.PickedItemInfo.builder()
-                    .tpid(pi.getTpid())
-                    .itemUid(pi.getItemId())
-                    .uom(pi.getUom())
-                    .pickedQty(pickedQty)
-                    .pickInstructionIds(List.of(pickInstructionId))
-                    .build();
+            ItemPickedEvent.ExceptionInfo exceptionInfo = buildExceptionInfo(exceptions, tx.getTransactionId());
 
-            ItemPickedEvent evt = ItemPickedEvent.builder()
-                    .ppsId(pi.getPpsId())
-                    .seatName(pi.getExtraFields() != null ? pi.getExtraFields().getSeatName() : null)
-                    .orderId(pi.getOrderId())
-                    .slotRef(pi.getSlotLocation())
-                    .ppsBinId(pi.getBinId())
-                    .transactionId(itemPickedTxId)
-                    .state(tx.getTransactionState())
-                    .danglingArea(danglingArea)
-                    .isMarkedContainerFlow(false)
-                    .pickedItemInfoList(List.of(itemInfo))
-                    .build();
-
-            outboxService.save(itemPickedEventsTopic, pickInstructionId, evt, "item_picked");
+            buildAndSaveItemPickedEvent(pickInstructionId, pi, itemPickedTxId,
+                    tx.getTransactionState(), pickedQty, danglingArea, exceptionInfo, toteId, internalOrderId,
+                    tx.getContainerAttributes().getStatus());
             log.info("Enqueued ItemPickedEvent | pickInstructionId: {} | txId: {} | containerStatus: {} | danglingArea: {}",
                     pickInstructionId, tx.getTransactionId(),
                     tx.getContainerAttributes() != null ? tx.getContainerAttributes().getStatus() : "?",
@@ -458,6 +480,74 @@ public class PickInstructionService {
             log.warn("Failed to enqueue ItemPickedEvent for tx: {} pickInstructionId: {} — non-critical",
                     tx.getTransactionId(), pickInstructionId, e);
         }
+    }
+
+    private ItemPickedEvent.ExceptionInfo buildExceptionInfo(
+            List<PickListEvent.ExceptionItem> exceptions, String transactionId) {
+        if (exceptions == null || exceptions.isEmpty()) return null;
+
+        int missing = 0, physicallyDamaged = 0;
+        for (PickListEvent.ExceptionItem ex : exceptions) {
+            if (!Objects.equals(transactionId, ex.getTransactionId())) continue;
+            int qty = ex.getProducts() != null
+                    ? ex.getProducts().stream()
+                            .mapToInt(PickListEvent.ExceptionProduct::getProductQuantity).sum()
+                    : 0;
+            switch (ex.getState() != null ? ex.getState().toLowerCase() : "") {
+                case "item_missing" -> missing += qty;
+                case "item_damaged" -> physicallyDamaged += qty;
+                default -> log.warn("Unsupported exception state: {}", ex.getState());
+            }
+        }
+
+        if (missing == 0 && physicallyDamaged == 0) return null;
+
+        return ItemPickedEvent.ExceptionInfo.builder()
+                .missing(missing)
+                .unscannable(0)
+                .physicallyDamaged(physicallyDamaged)
+                .checklistException(0)
+                .build();
+    }
+
+    private void buildAndSaveItemPickedEvent(
+            String pickInstructionId,
+            PickInstruction pi,
+            String transactionId,
+            String transactionState,
+            int pickedQty,
+            String danglingArea,
+            ItemPickedEvent.ExceptionInfo exceptionInfo,
+            String toteId,
+            Long internalOrderId,
+            String containerStatus) {
+
+        ItemPickedEvent.PickedItemInfo itemInfo = ItemPickedEvent.PickedItemInfo.builder()
+                .tpid(pi.getTpid())
+                .itemUid(pi.getItemId())
+                .uom(pi.getUom())
+                .pickedQty(pickedQty)
+                .pickInstructionIds(List.of(pickInstructionId))
+                .exception(exceptionInfo)
+                .build();
+
+        ItemPickedEvent evt = ItemPickedEvent.builder()
+                .ppsId(pi.getPpsId())
+                .seatName(pi.getExtraFields() != null ? pi.getExtraFields().getSeatName() : null)
+                .orderId(pi.getOrderId())
+                .slotRef(pi.getSlotLocation())
+                .ppsBinId(pi.getBinId())
+                .transactionId(transactionId)
+                .state(transactionState)
+                .danglingArea(danglingArea)
+                .toteId(toteId)
+                .internalOrderId(internalOrderId)
+                .status(containerStatus)
+                .isMarkedContainerFlow(false)
+                .pickedItemInfoList(List.of(itemInfo))
+                .build();
+
+        outboxService.save(itemPickedEventsTopic, pickInstructionId, evt, "item_picked");
     }
 
     /**
@@ -585,6 +675,12 @@ public class PickInstructionService {
                 entry.put("internal_order_id", attrs.getInternalOrderId());
                 entry.put("item_id", itemId);
                 entry.put("tpid", tpid);
+                if (attrs.getToteId() != null) {
+                    entry.put("tote_id", attrs.getToteId());
+                }
+                if (attrs.getLocation() != null) {
+                    entry.put("location", attrs.getLocation());
+                }
                 list.add(entry);
             }
         }

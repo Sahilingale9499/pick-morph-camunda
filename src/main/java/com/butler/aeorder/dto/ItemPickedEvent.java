@@ -49,6 +49,9 @@ public class ItemPickedEvent {
     @JsonProperty("state")
     private String state;
 
+    @JsonProperty("status")
+    private String status;
+
     @JsonProperty("pps_point")
     private String ppsPoint;
 
@@ -72,6 +75,12 @@ public class ItemPickedEvent {
 
     @JsonProperty("dangling_area")
     private String danglingArea;
+
+    @JsonProperty("tote_id")
+    private String toteId;
+
+    @JsonProperty("internal_order_id")
+    private Long internalOrderId;
 
     @JsonProperty("irt_bin_serial")
     private String irtBinSerial;
@@ -111,6 +120,26 @@ public class ItemPickedEvent {
         private List<String> pickInstructionIds;
 
         @JsonProperty("exception")
-        private String exception;
+        private ExceptionInfo exception;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class ExceptionInfo {
+
+        @JsonProperty("missing")
+        private int missing;
+
+        @JsonProperty("unscannable")
+        private int unscannable;
+
+        @JsonProperty("physically_damaged")
+        private int physicallyDamaged;
+
+        @JsonProperty("checklist_exception")
+        private int checklistException;
     }
 }

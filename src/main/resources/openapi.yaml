@@ -175,19 +175,116 @@ components:
         order_id:
           type: string
           description: Customer order ID from PickInstruction
-        orderline_id:
+        orderlineId:
           type: string
           description: Customer orderline ID from PickInstruction
         state:
           type: string
           description: AE order state (e.g. cancellation_locked, pick_transaction, complete)
-        sub_state:
+        subState:
           type: string
           description: AE order sub_state (e.g. created, in_palletization, fully_palletized)
-        actuals:
-          type: object
-          description: Per-orderline actuals from the AE pick-list event
-      required: [pick_instruction_id, order_id, orderline_id, state]
+        transactions:
+          type: array
+          description: Per-container transaction entries built from AE pick-list event
+          items:
+            type: object
+            properties:
+              transaction_id:
+                type: string
+              qty_to_be_picked:
+                type: integer
+              qty_picked:
+                type: integer
+              status:
+                type: string
+              pps_id:
+                type: string
+              bot_id:
+                type: string
+              internal_order_id:
+                type: integer
+              item_id:
+                type: string
+              tpid:
+                type: integer
+              tote_id:
+                type: string
+                nullable: true
+                description: Tote identifier from AE containerAttributes — omitted when not present
+      required: [pick_instruction_id, order_id, orderlineId, state]
+    ItemPickedEvent:
+      type: object
+      description: >
+        Published to <tenant>.item_picked.events when a transaction reaches status=complete
+        or status=unloaded in a pick-list.events pick_transaction event.
+      properties:
+        pps_id:
+          type: integer
+        seat_name:
+          type: string
+          nullable: true
+        order_id:
+          type: string
+        slot_ref:
+          type: string
+          nullable: true
+        pps_bin_id:
+          type: string
+          nullable: true
+        transaction_id:
+          type: string
+        state:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+          description: Container status from AE containerAttributes (e.g. complete, unloaded)
+        dangling_area:
+          type: string
+          description: '"bot" for status=complete (pre-drop); "undefined" for status=unloaded (drop)'
+        tote_id:
+          type: string
+          nullable: true
+          description: Tote identifier from AE containerAttributes — omitted when not present in source event
+        internal_order_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Internal order ID from AE containerAttributes — omitted when not present
+        is_marked_container_flow:
+          type: boolean
+        picked_item_info_list:
+          type: array
+          items:
+            type: object
+            properties:
+              tpid:
+                type: integer
+              item_uid:
+                type: string
+              uom:
+                type: string
+              picked_qty:
+                type: integer
+              pick_instruction_ids:
+                type: array
+                items:
+                  type: string
+              exception:
+                type: object
+                nullable: true
+                properties:
+                  missing:
+                    type: integer
+                  unscannable:
+                    type: integer
+                  physically_damaged:
+                    type: integer
+                  checklist_exception:
+                    type: integer
+      required: [pps_id, order_id, transaction_id, dangling_area, picked_item_info_list]
   # Kafka message descriptions
   x-kafka:
     topics:
@@ -213,3 +310,11 @@ components:
           Consumed by Butler Core to call make_and_send_order_related_notifications.
         payload:
           $ref: '#/components/schemas/OrderUpdateEvent'
+      item_picked.events:
+        direction: outbound
+        description: >
+          Published when a transaction reaches status=complete (danglingArea=bot, pre-drop path)
+          or status=unloaded (danglingArea=undefined, drop path) in a pick_transaction event.
+          One event per qualifying transaction. Consumed by Butler Core item_picked_event_handler.
+        payload:
+          $ref: '#/components/schemas/ItemPickedEvent'

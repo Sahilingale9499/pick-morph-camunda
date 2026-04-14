@@ -180,6 +180,9 @@ public class PickListEvent {
         @JsonProperty("expectations")
         private Object expectations;
 
+        @JsonProperty("exceptions")
+        private List<ExceptionItem> exceptions;
+
         @JsonProperty("receivedOn")
         private String receivedOn;
 
@@ -232,6 +235,132 @@ public class PickListEvent {
         private ContainerAttributes containerAttributes;
     }
 
+    // ── Exception item ───────────────────────────────────────────────────────
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class ExceptionItem {
+
+        @JsonProperty("id")
+        private Long id;
+
+        @JsonProperty("state")
+        private String state;
+
+        @JsonProperty("type")
+        private String type;
+
+        @JsonProperty("barcode")
+        private String barcode;
+
+        @JsonProperty("transactionId")
+        private String transactionId;
+
+        @JsonProperty("createdOn")
+        private String createdOn;
+
+        @JsonProperty("updatedOn")
+        private String updatedOn;
+
+        @JsonProperty("containers")
+        private List<Object> containers;
+
+        @JsonProperty("actions")
+        private List<Object> actions;
+
+        @JsonProperty("products")
+        private List<ExceptionProduct> products;
+
+        @JsonProperty("containerAttributes")
+        private ExceptionContainerAttributes containerAttributes;
+
+        @JsonProperty("carrier_type")
+        private String carrierType;
+
+        @JsonProperty("carrier_sub_type")
+        private String carrierSubType;
+    }
+
+    // ── Exception product ────────────────────────────────────────────────────
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class ExceptionProduct {
+
+        @JsonProperty("id")
+        private Long id;
+
+        @JsonProperty("uid")
+        private String uid;
+
+        @JsonProperty("possibleUids")
+        private Object possibleUids;
+
+        @JsonProperty("uidType")
+        private String uidType;
+
+        @JsonProperty("createdOn")
+        private String createdOn;
+
+        @JsonProperty("updatedOn")
+        private String updatedOn;
+
+        @JsonProperty("productQuantity")
+        private int productQuantity;
+
+        @JsonProperty("productAttributes")
+        private Object productAttributes;
+    }
+
+    // ── Exception container attributes ───────────────────────────────────────
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class ExceptionContainerAttributes {
+
+        @JsonProperty("tote_id")
+        private String toteId;
+
+        @JsonProperty("pps_bin_id")
+        private String ppsBinId;
+
+        @JsonProperty("pps_seat_name")
+        private String ppsSeatName;
+
+        @JsonProperty("trueCopyIdOf")
+        private Long trueCopyIdOf;
+
+        @JsonProperty("user_name")
+        private String userName;
+
+        @JsonProperty("rollcage_id")
+        private String rollcageId;
+
+        @JsonProperty("pps_id")
+        private String ppsId;
+
+        @JsonProperty("destination_location")
+        private String destinationLocation;
+
+        @JsonProperty("location")
+        private String location;
+
+        @JsonProperty("bot_id")
+        private String botId;
+
+        @JsonProperty("internal_order_id")
+        private Long internalOrderId;
+    }
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -259,5 +388,11 @@ public class PickListEvent {
 
         @JsonProperty("pps_id")
         private String ppsId;
+
+        @JsonProperty("tote_id")
+        private String toteId;
+
+        @JsonProperty("location")
+        private String location;
     }
 }
