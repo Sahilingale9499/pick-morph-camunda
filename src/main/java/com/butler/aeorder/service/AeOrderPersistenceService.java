@@ -4,18 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.butler.aeorder.dto.AePickListRequest;
 import com.butler.aeorder.model.AeOrder;
 import com.butler.aeorder.model.AeOrdersMapping;
-import com.butler.aeorder.model.TransactionStatus;
 import com.butler.aeorder.repository.AeOrderRepository;
 import com.butler.aeorder.repository.AeOrdersMappingRepository;
-import com.butler.aeorder.repository.TransactionStatusRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Handles all PostgreSQL persistence for AE orders and transaction statuses.
@@ -26,16 +22,13 @@ public class AeOrderPersistenceService {
 
     private final AeOrderRepository aeOrderRepository;
     private final AeOrdersMappingRepository aeOrdersMappingRepository;
-    private final TransactionStatusRepository transactionStatusRepository;
     private final ObjectMapper objectMapper;
 
     public AeOrderPersistenceService(AeOrderRepository aeOrderRepository,
                                      AeOrdersMappingRepository aeOrdersMappingRepository,
-                                     TransactionStatusRepository transactionStatusRepository,
                                      ObjectMapper objectMapper) {
         this.aeOrderRepository = aeOrderRepository;
         this.aeOrdersMappingRepository = aeOrdersMappingRepository;
-        this.transactionStatusRepository = transactionStatusRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -104,24 +97,6 @@ public class AeOrderPersistenceService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to persist AeOrder for externalServiceRequestId: " + pickId, e);
         }
-    }
-
-    /**
-     * Persists or updates the transaction status for the given txId.
-     */
-    public void saveTransactionStatus(String txId, String pickId, String status) {
-        if (txId == null || txId.isEmpty()) {
-            return;
-        }
-        TransactionStatus ts = new TransactionStatus(txId, pickId, status, Instant.now());
-        transactionStatusRepository.save(ts);
-    }
-
-    /**
-     * Looks up a persisted transaction status by txId.
-     */
-    public Optional<TransactionStatus> findTransactionStatus(String txId) {
-        return transactionStatusRepository.findById(txId);
     }
 
     /**

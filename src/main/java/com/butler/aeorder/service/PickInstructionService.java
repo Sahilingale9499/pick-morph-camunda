@@ -550,36 +550,6 @@ public class PickInstructionService {
         outboxService.save(itemPickedEventsTopic, pickInstructionId, evt, "item_picked");
     }
 
-    /**
-     * Builds and enqueues an {@link OrderUpdateEvent} for a transaction whose container
-     * status is {@code created} (item not yet picked).
-     * The transaction itself is serialised as the {@code actuals} field.
-     */
-    private void enqueueTransactionOrderUpdate(String pickInstructionId,
-                                               PickListEvent.Transaction tx,
-                                               PickListEvent.ServiceRequest sr,
-                                               PickInstruction pi,
-                                               String state,
-                                               String subState) {
-        try {
-            OrderUpdateEvent update = OrderUpdateEvent.builder()
-                    .pickInstructionId(pickInstructionId)
-                    .transactionId(tx.getTransactionId())
-                    .orderId(pi.getOrderId())
-                    .orderlineId(sr.getExternalServiceRequestId())
-                    .state(state)
-                    .subState(subState)
-                    .transactions(objectMapper.convertValue(tx.getContainerAttributes(), new TypeReference<Map<String, Object>>() {}))
-                    .build();
-            outboxService.save(orderUpdateEventsTopic, pickInstructionId, update, "update");
-            log.info("Enqueued OrderUpdateEvent (created container) | pickInstructionId: {} | txId: {} | orderline: {}",
-                    pickInstructionId, tx.getTransactionId(), sr.getExternalServiceRequestId());
-        } catch (Exception e) {
-            log.warn("Failed to enqueue transaction OrderUpdateEvent for pickInstructionId: {}, txId: {} — non-critical",
-                    pickInstructionId, tx.getTransactionId(), e);
-        }
-    }
-
     // ─── Order update notifications ─────────────────────────────────────────
 
     /**

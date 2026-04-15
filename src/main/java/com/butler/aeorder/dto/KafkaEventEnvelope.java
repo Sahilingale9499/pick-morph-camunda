@@ -9,7 +9,7 @@ import lombok.Data;
  * Generic event envelope for all Kafka messages published and consumed by this service.
  * Wraps the business payload with routing and tracing metadata.
  *
- * <p>P = Payload type (e.g. SrmsPickListResponse, TransactionUpdate, AePickListRequest)
+ * <p>P = Payload type (e.g. AePickListRequest, OrderUpdateEvent, ItemPickedEvent)
  *
  * <p>On the publish side, {@code OutboxService} builds this envelope automatically.
  * On the consume side, deserialize with {@code TypeReference<KafkaEventEnvelope<MyPayload>>}.
