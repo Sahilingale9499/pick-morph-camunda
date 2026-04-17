@@ -82,7 +82,7 @@ public class PickListEventListener {
     }
 
     /** Resolves event_type: context first, then payload.attributes fallback. */
-    private String resolveEventType(PickListEvent event) {
+    static String resolveEventType(PickListEvent event) {
         if (event.getContext() != null && event.getContext().getEventType() != null) {
             return event.getContext().getEventType();
         }

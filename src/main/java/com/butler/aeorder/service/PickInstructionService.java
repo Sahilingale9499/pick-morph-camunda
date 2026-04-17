@@ -105,20 +105,8 @@ public class PickInstructionService {
     public void terminateWithFailureResponse(String pickId, String status, String orderId,
             String orderlineId, String message, String errorCode, String errorsJson) {
         aeOrderPersistenceService.markAsFailed(pickId);
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("id", pickId);
-        response.put("order_id", orderId);
-        response.put("status", status);
-        response.put("message", message);
-        if (orderlineId != null) response.put("orderline_id", orderlineId);
-        if (errorCode != null) response.put("errorCode", errorCode);
-        if (errorsJson != null) {
-            try {
-                response.put("errors", objectMapper.readValue(errorsJson, List.class));
-            } catch (Exception e) {
-                log.warn("Failed to parse errorsJson for pickId: {}", pickId, e);
-            }
-        }
+        Map<String, Object> response = buildFailureResponseMap(
+                pickId, status, orderId, orderlineId, message, errorCode, errorsJson, objectMapper);
         outboxService.save(pickInstructionResponseTopic, pickId, response, "pick_instruction_response");
         log.info("Marked AE order as FAILED and queued failure response | pickId: {}", pickId);
     }
@@ -129,25 +117,8 @@ public class PickInstructionService {
     @Transactional
     public void publishPickInstructionResponse(String pickId, String status,
             String orderId, String orderlineId, String message, String errorCode, String errorsJson) {
-        boolean success = "SUCCESS".equalsIgnoreCase(status);
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("id", pickId);
-        response.put("order_id", orderId);
-        response.put("status", status);
-        response.put("message", message);
-        if (orderlineId != null) {
-            response.put("orderline_id", orderlineId);
-        }
-        if (!success) {
-            if (errorCode != null) response.put("errorCode", errorCode);
-            if (errorsJson != null) {
-                try {
-                    response.put("errors", objectMapper.readValue(errorsJson, List.class));
-                } catch (Exception e) {
-                    log.warn("Failed to parse errorsJson for pickId: {}", pickId, e);
-                }
-            }
-        }
+        Map<String, Object> response = buildPickInstructionResponseMap(
+                pickId, status, orderId, orderlineId, message);
         outboxService.save(pickInstructionResponseTopic, pickId, response, "pick_instruction_response");
         log.info("Queued pick-instruction.response for pickId: {} | status: {}", pickId, status);
     }
@@ -404,50 +375,6 @@ public class PickInstructionService {
         return orderStatus;
     }
 
-    // ─── Mark complete / failed ─────────────────────────────────────────────
-
-    /**
-     * Mark the pick instruction as complete.
-     */
-    public void markPickInstructionComplete(String pickInstructionId) {
-        log.info("Finalizing Workflow: Pick Instruction {} is COMPLETE.", pickInstructionId);
-        // repository.updateStatus(pickInstructionId, "COMPLETED");
-    }
-
-    /**
-     * Mark the pick instruction as failed.
-     */
-    public void markPickInstructionFailed(String pickInstructionId, String transactionId, String failureReason) {
-        log.error("Pick Instruction FAILED - pickInstructionId: {}, transactionId: {}, reason: {}",
-                pickInstructionId, transactionId, failureReason);
-        // repository.updateStatus(pickInstructionId, "FAILED");
-        // repository.setFailureReason(pickInstructionId, failureReason);
-    }
-
-    // ─── Workflow completion ─────────────────────────────────────────────────
-
-    /**
-     * Run workflow completion cleanup: publishes a Kafka audit event with the final internal status.
-     */
-    public void onWorkflowComplete(String pickInstructionId, String internalStatus, String failureReason) {
-        log.info("Workflow completing for pickInstructionId: {} — running cleanup. internalStatus: {}",
-                pickInstructionId, internalStatus);
-
-        try {
-            Map<String, Object> auditEvent = new LinkedHashMap<>();
-            auditEvent.put("pickInstructionId", pickInstructionId);
-            auditEvent.put("internalStatus", internalStatus);
-            auditEvent.put("failureReason", failureReason);
-            auditEvent.put("timestamp", Instant.now().toString());
-            kafkaTemplate.send("workflow-complete-events-topic", pickInstructionId, auditEvent);
-            log.info("Published workflow-complete audit event to Kafka for pickInstructionId: {}", pickInstructionId);
-        } catch (Exception e) {
-            log.warn("Failed to publish workflow-complete audit event for pickInstructionId: {}. Non-critical.", pickInstructionId, e);
-        }
-
-        log.info("Workflow cleanup complete for pickInstructionId: {} — final status: {}", pickInstructionId, internalStatus);
-    }
-
     /**
      * Builds and enqueues an {@link ItemPickedEvent} outbox entry for a single transaction.
      *
@@ -482,7 +409,7 @@ public class PickInstructionService {
         }
     }
 
-    private ItemPickedEvent.ExceptionInfo buildExceptionInfo(
+    static ItemPickedEvent.ExceptionInfo buildExceptionInfo(
             List<PickListEvent.ExceptionItem> exceptions, String transactionId) {
         if (exceptions == null || exceptions.isEmpty()) return null;
 
@@ -508,6 +435,39 @@ public class PickInstructionService {
                 .physicallyDamaged(physicallyDamaged)
                 .checklistException(0)
                 .build();
+    }
+
+    static Map<String, Object> buildFailureResponseMap(
+            String pickId, String status, String orderId, String orderlineId,
+            String message, String errorCode, String errorsJson, ObjectMapper objectMapper) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", pickId);
+        response.put("order_id", orderId);
+        response.put("status", status);
+        response.put("message", message);
+        response.put("orderline_id", orderlineId);
+        response.put("errorCode", errorCode);
+        List<?> errors = null;
+        if (errorsJson != null) {
+            try {
+                errors = objectMapper.readValue(errorsJson, List.class);
+            } catch (Exception e) {
+                log.warn("Failed to parse errorsJson for pickId: {}", pickId, e);
+            }
+        }
+        response.put("errors", errors);
+        return response;
+    }
+
+    static Map<String, Object> buildPickInstructionResponseMap(
+            String pickId, String status, String orderId, String orderlineId, String message) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", pickId);
+        response.put("order_id", orderId);
+        response.put("status", status);
+        response.put("message", message);
+        response.put("orderline_id", orderlineId);
+        return response;
     }
 
     private void buildAndSaveItemPickedEvent(
@@ -561,7 +521,6 @@ public class PickInstructionService {
      * not from the AE pick-list event.
      */
     @Transactional
-    @SuppressWarnings("unchecked")
     public void enqueueOrderUpdate(String pickInstructionId, PickInstruction pi, PickListEvent event) {
         PickListEvent.Payload payload = event.getPayload();
         if (payload == null || payload.getServiceRequests() == null) return;
@@ -571,21 +530,7 @@ public class PickInstructionService {
 
         for (PickListEvent.ServiceRequest sr : payload.getServiceRequests()) {
             try {
-                int allocatedQty = 0;
-                if (sr.getActuals() instanceof Map) {
-                    List<?> containers = (List<?>) ((Map<?, ?>) sr.getActuals()).get("containers");
-                    if (containers != null) {
-                        for (Object c : containers) {
-                            if (c instanceof Map) {
-                                Object attrs = ((Map<?, ?>) c).get("containerAttributes");
-                                if (attrs instanceof Map) {
-                                    Object qty = ((Map<?, ?>) attrs).get("qty_to_be_picked");
-                                    if (qty instanceof Number) allocatedQty += ((Number) qty).intValue();
-                                }
-                            }
-                        }
-                    }
-                }
+                int allocatedQty = computeAllocatedQty(sr.getActuals());
                 List<Object> transactionList = buildTransactionList(sr.getTransactions(), allocatedQty, pi.getQty(), pickInstructionId, pi.getPpsId(), pi.getItemId(), pi.getTpid(), pi.getSlotLocation());
 
                 OrderUpdateEvent update = OrderUpdateEvent.builder()
@@ -622,7 +567,22 @@ public class PickInstructionService {
         }
     }
 
-    private List<Object> buildTransactionList(List<PickListEvent.Transaction> transactions,
+    static int computeAllocatedQty(Object actuals) {
+        if (!(actuals instanceof Map)) return 0;
+        List<?> containers = (List<?>) ((Map<?, ?>) actuals).get("containers");
+        if (containers == null) return 0;
+        int total = 0;
+        for (Object c : containers) {
+            if (!(c instanceof Map)) continue;
+            Object attrs = ((Map<?, ?>) c).get("containerAttributes");
+            if (!(attrs instanceof Map)) continue;
+            Object qty = ((Map<?, ?>) attrs).get("qty_to_be_picked");
+            if (qty instanceof Number) total += ((Number) qty).intValue();
+        }
+        return total;
+    }
+
+    static List<Object> buildTransactionList(List<PickListEvent.Transaction> transactions,
                                                int allocatedQty,
                                                int totalQty,
                                                String pickInstructionId,

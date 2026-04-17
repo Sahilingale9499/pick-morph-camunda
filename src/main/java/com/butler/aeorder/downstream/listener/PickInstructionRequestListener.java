@@ -49,24 +49,9 @@ public class PickInstructionRequestListener {
 
         PickInstructionRequestMessage msg = event.getPayload();
 
-        if (msg.getId() == null || msg.getId().isBlank()) {
-            log.error("Received pick-instruction.requests message with null/blank id — dropping");
-            return;
-        }
-        if (msg.getOrderId() == null || msg.getOrderId().isBlank()) {
-            log.error("Received pick-instruction.requests with null/blank orderId for pickId: {} — dropping", msg.getId());
-            return;
-        }
-        if (msg.getOrderlineId() == null || msg.getOrderlineId().isBlank()) {
-            log.error("Received pick-instruction.requests with null/blank orderlineId for pickId: {} — dropping", msg.getId());
-            return;
-        }
-        if (msg.getQty() <= 0) {
-            log.error("Received pick-instruction.requests with invalid qty: {} for pickId: {} — dropping", msg.getQty(), msg.getId());
-            return;
-        }
-        if (msg.getSlotId() == null || msg.getSlotId().isBlank()) {
-            log.error("Received pick-instruction.requests with null/blank slotId for pickId: {} — dropping", msg.getId());
+        String error = validationError(msg);
+        if (error != null) {
+            log.error("Received pick-instruction.requests with {} for pickId: {} — dropping", error, msg.getId());
             return;
         }
 
@@ -74,5 +59,18 @@ public class PickInstructionRequestListener {
                 msg.getId(), msg.getOrderId(), msg.getTpid(), msg.getPpsId());
 
         processService.startProcess(msg);
+    }
+
+    /**
+     * Returns the first validation error for the message, or null if all fields are valid.
+     * Extracted to enable unit testing of validation logic without Spring/Kafka context.
+     */
+    static String validationError(PickInstructionRequestMessage msg) {
+        if (msg.getId() == null || msg.getId().isBlank())                   return "null/blank id";
+        if (msg.getOrderId() == null || msg.getOrderId().isBlank())         return "null/blank orderId";
+        if (msg.getOrderlineId() == null || msg.getOrderlineId().isBlank()) return "null/blank orderlineId";
+        if (msg.getQty() <= 0)                                               return "invalid qty";
+        if (msg.getSlotId() == null || msg.getSlotId().isBlank())           return "null/blank slotId";
+        return null;
     }
 }

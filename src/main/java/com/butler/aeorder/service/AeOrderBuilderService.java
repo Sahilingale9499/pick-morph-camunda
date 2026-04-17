@@ -144,7 +144,7 @@ public class AeOrderBuilderService {
                 .build();
     }
 
-    private AePickListRequest.AeProductAttributes buildProductAttributes(
+    static AePickListRequest.AeProductAttributes buildProductAttributes(
             PickInstructionRequestMessage msg,
             List<String> filterParams,
             List<String> packageParams) {

@@ -36,9 +36,6 @@ public class KafkaTopicConfig {
     @Value("${kafka.topics.pick-instruction-response}")
     private String pickInstructionResponseTopic;
 
-    @Value("${kafka.topics.workflow-complete-events}")
-    private String workflowCompleteEventsTopic;
-
     @Value("${kafka.topic.order-update-events}")
     private String orderUpdateEventsTopic;
 
@@ -65,11 +62,6 @@ public class KafkaTopicConfig {
     @Bean
     public NewTopic pickInstructionResponseTopicBean() {
         return TopicBuilder.name(pickInstructionResponseTopic).partitions(1).replicas(1).build();
-    }
-
-    @Bean
-    public NewTopic workflowCompleteEventsTopicBean() {
-        return TopicBuilder.name(workflowCompleteEventsTopic).partitions(1).replicas(1).build();
     }
 
     @Bean

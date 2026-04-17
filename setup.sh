@@ -32,7 +32,6 @@ KAFKA_TOPICS=(
   "${TENANT}.order_update.events"
   "${TENANT}.transaction.updates"
   "${TENANT}.transaction.events"
-  "${TENANT}.workflow.complete.events"
 )
 
 # ── helpers ──────────────────────────────────────────────────
