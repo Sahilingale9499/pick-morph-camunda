@@ -8,7 +8,7 @@ import lombok.Data;
 @Data
 public class PickInstruction {
 
-    // ── (pick-instruction.events Kafka contract) ──────────────────
+    // ── (pick-instruction.requests Kafka contract) ────────────────
     @JsonProperty("id")
     private String pickInstructionId;               // Used as WorkflowId and OrderId
 

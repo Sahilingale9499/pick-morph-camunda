@@ -4,12 +4,12 @@ import subprocess
 import os
 
 THRESHOLD_BYTES  = 5 * 1024 ** 3   # 5 GB
-SERVICE_NAME     = "spring-temporal"
+SERVICE_NAME     = "spring-camunda"
 MAX_INSTANCES    = 10
 COOLDOWN_SEC     = 60               # min seconds between scale-up events
 CHECK_INTERVAL   = 15               # seconds between memory checks
 COMPOSE_FILE     = "/app/docker-compose.yml"
-PROJECT_NAME     = os.getenv("COMPOSE_PROJECT_NAME", "temporalprojectworkflowmanagement")
+PROJECT_NAME     = os.getenv("COMPOSE_PROJECT_NAME", "pick-morph-camunda")
 
 
 def get_total_memory(client):

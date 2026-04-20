@@ -16,24 +16,19 @@
   ```bash
   docker ps
   ```
-- See logs for a specific service (e.g. Temporal):
+- See logs for a specific service (e.g. spring-camunda):
   ```bash
-  docker compose logs temporal
+  docker compose logs spring-camunda
   ```
 - Recreate stack from scratch:
   ```bash
-    docker-compose down && ./mvnw clean package -DskipTests && docker-compose up --build -d
+  ./setup.sh
   ```
 
 Common port issues:
-- If a port (e.g. 5432 or 7233) is already in use, stop the process using it or change the host port mapping in `docker-compose.yml`.
+- If a port (e.g. 5432 or 9191) is already in use, stop the process using it or change the host port mapping in `docker-compose.yml`.
 
-## 3. Temporal-specific debugging
-- Open Temporal UI at `http://localhost:8080`.
-- Inspect workflow executions, history, and failures.
-- Verify the worker is connected and polling tasks.
-
-## 4. Kafka-related issues
+## 3. Kafka-related issues
 - Ensure Zookeeper and Kafka containers are healthy.
 - Check Kafka logs:
   ```bash

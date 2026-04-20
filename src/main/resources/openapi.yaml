@@ -26,24 +26,6 @@ paths:
             text/plain:
               schema:
                 type: string
-  /Order/validate:
-    post:
-      summary: Send validation result signal
-      operationId: sendValidationResult
-      tags: [Order]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ValidationResult'
-      responses:
-        '200':
-          description: Validation signal sent
-          content:
-            text/plain:
-              schema:
-                type: string
   /Order/terminate/{pickInstructionId}:
     delete:
       summary: Terminate workflow
@@ -63,29 +45,11 @@ paths:
             text/plain:
               schema:
                 type: string
-  /Order/transaction-update:
-    post:
-      summary: Send transaction update signal
-      operationId: sendTransactionUpdate
-      tags: [Order]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TransactionUpdate'
-      responses:
-        '200':
-          description: Transaction update signal sent
-          content:
-            text/plain:
-              schema:
-                type: string
 components:
   schemas:
     PickInstruction:
       type: object
-      description: Pick instruction event — received via Kafka (gor.pick-instruction.events) or REST (POST /Order/pick_instruction)
+      description: Pick instruction payload — received via Kafka (pick-instruction.requests) or REST (POST /Order/pick_instruction)
       properties:
         id:
           type: string
@@ -124,42 +88,6 @@ components:
             seat_name:
               type: string
       required: [id, order_id, orderline_id, qty, slot_id, uom, tpid, item_id, pps_id, bin_id]
-    ValidationResult:
-      type: object
-      properties:
-        orderId:
-          type: string
-          description: Matches PickId
-        transactionId:
-          type: string
-        success:
-          type: boolean
-      required: [orderId, success]
-    TransactionUpdate:
-      type: object
-      properties:
-        pickInstructionId:
-          type: string
-        transactionId:
-          type: string
-        command:
-          type: string
-          description: e.g., UPDATE, CANCEL, COMPLETE, RETRY
-        transactionType:
-          type: string
-          description: e.g., PICK, DROP, SCAN
-        processedQty:
-          type: integer
-          format: int32
-        status:
-          type: string
-          description: e.g., IN_PROGRESS, COMPLETED, FAILED
-        timestamp:
-          type: string
-          description: ISO-8601 timestamp
-        additionalInfo:
-          type: string
-      required: [pickInstructionId, transactionId, command, status]
     OrderUpdateEvent:
       type: object
       description: >
@@ -288,21 +216,11 @@ components:
   # Kafka message descriptions
   x-kafka:
     topics:
-      pick-instruction.events:
+      pick-instruction.requests:
         direction: inbound
-        description: Triggers creation of a new pick instruction workflow. JSON payload matches PickInstruction schema.
+        description: Triggers creation of a new pick instruction workflow. Consumed by PickInstructionRequestListener.
         payload:
           $ref: '#/components/schemas/PickInstruction'
-      transaction-updates-topic:
-        direction: inbound
-        description: Transaction updates consumed by TransactionUpdateListener.
-        payload:
-          $ref: '#/components/schemas/TransactionUpdate'
-      validation-results-topic:
-        direction: inbound
-        description: Validation results consumed by ValidationResultListener.
-        payload:
-          $ref: '#/components/schemas/ValidationResult'
       order_update.events:
         direction: outbound
         description: >

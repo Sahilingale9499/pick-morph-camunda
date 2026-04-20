@@ -22,7 +22,6 @@ SPRING="${PROJECT}-spring-camunda-1"
 TENANT="${KAFKA_TENANT_PREFIX:-gor}"
 
 KAFKA_TOPICS=(
-  "${TENANT}.pick-instruction.events"
   "${TENANT}.pick-instruction.requests"
   "${TENANT}.pick-instruction.response"
   "${TENANT}.pick-list.requests"
