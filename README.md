@@ -62,7 +62,6 @@ App starts on **http://localhost:9191**.
 | `POST` | `/Order/pick_instruction` | Start a pick instruction workflow |
 | `DELETE` | `/Order/terminate/{pickId}` | Terminate a running process instance |
 | `GET` | `/actuator/health` | Health check (includes Camunda process engine) |
-| `GET` | `/ratelimit/metrics` | Request metrics snapshot |
 
 ### Example flow
 
@@ -101,7 +100,7 @@ curl -X POST http://localhost:9191/Order/pick_instruction \
 
 ```
 src/main/
-├── java/com/butler/aeorder/
+├── java/greymatter/butler/aeorder/
 │   ├── controller/         # REST endpoints (PickWorkflowController)
 │   ├── delegates/          # Camunda JavaDelegate service task implementations
 │   ├── service/            # PickInstructionService (business logic)
