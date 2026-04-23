@@ -1,50 +1,10 @@
 openapi: 3.0.3
 info:
-  title: WorkflowProject API
+  title: pick-morph-camunda Kafka Contracts
   version: 1.0.0
   description: |
-    HTTP APIs and Kafka message payloads for the Camunda-based pick instruction workflow system.
-servers:
-  - url: http://localhost:9191
-    description: Local Spring Boot service
-paths:
-  /Order/pick_instruction:
-    post:
-      summary: Start pick instruction workflow
-      operationId: startPickInstructionWorkflow
-      tags: [Order]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PickInstruction'
-      responses:
-        '200':
-          description: Workflow started
-          content:
-            text/plain:
-              schema:
-                type: string
-  /Order/terminate/{pickInstructionId}:
-    delete:
-      summary: Terminate workflow
-      operationId: terminateWorkflow
-      tags: [Order]
-      parameters:
-        - name: pickInstructionId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Pick ID used as workflow ID suffix
-      responses:
-        '200':
-          description: Workflow terminated
-          content:
-            text/plain:
-              schema:
-                type: string
+    Kafka message payloads for the Camunda-based pick instruction workflow system.
+    No REST endpoints are exposed — all input/output is via Kafka topics documented below.
 components:
   schemas:
     PickInstruction:

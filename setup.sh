@@ -82,53 +82,11 @@ if docker ps --format '{{.Names}}' | grep -q "^${SPRING}$"; then
   # 1. Truncate app tables
   step_start
   log "Truncating app tables..."
-  pg "TRUNCATE TABLE outbox_event, transaction_status, ae_orders_mapping, ae_order RESTART IDENTITY CASCADE;"
+  pg "TRUNCATE TABLE outbox, transaction_status, order_mapping, ae_order RESTART IDENTITY CASCADE;"
   ok "App tables cleared."
   step_done
 
-  # 2. Truncate Camunda runtime & history tables
-  #    Order matters: children before parents to satisfy FK constraints
-  step_start
-  log "Truncating Camunda runtime/history tables..."
-  pg "
-    TRUNCATE TABLE
-      act_hi_job_log,
-      act_hi_ext_task_log,
-      act_hi_op_log,
-      act_hi_detail,
-      act_hi_comment,
-      act_hi_attachment,
-      act_hi_identitylink,
-      act_hi_varinst,
-      act_hi_taskinst,
-      act_hi_actinst,
-      act_hi_dec_in,
-      act_hi_dec_out,
-      act_hi_decinst,
-      act_hi_caseactinst,
-      act_hi_caseinst,
-      act_hi_incident,
-      act_hi_batch,
-      act_hi_procinst,
-      act_ru_ext_task,
-      act_ru_batch,
-      act_ru_incident,
-      act_ru_identitylink,
-      act_ru_task,
-      act_ru_variable,
-      act_ru_event_subscr,
-      act_ru_job,
-      act_ru_case_sentry_part,
-      act_ru_case_execution,
-      act_ru_execution,
-      act_ru_meter_log,
-      act_ru_task_meter_log
-    CASCADE;
-  "
-  ok "Camunda tables cleared."
-  step_done
-
-  # 3. Delete Kafka topics
+  # 2. Delete Kafka topics
   step_start
   log "Deleting Kafka topics..."
   for topic in "${KAFKA_TOPICS[@]}"; do
@@ -145,8 +103,10 @@ if docker ps --format '{{.Names}}' | grep -q "^${SPRING}$"; then
   done
   step_done
 
-  # 4. Rebuild & restart only spring-camunda
+  # 3. Rebuild & restart only spring-camunda
   step_start
+  log "Building JAR..."
+  mvn package -DskipTests
   log "Rebuilding spring-camunda image..."
   docker compose build spring-camunda
   log "Restarting spring-camunda container..."
@@ -164,6 +124,8 @@ else
   step_done
 
   step_start
+  log "Building JAR..."
+  mvn package -DskipTests
   log "Starting all services..."
   docker compose up --build -d
   step_done

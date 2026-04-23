@@ -1,4 +1,4 @@
-package greymatter.butler.aeorder.downstream.listener;
+package greymatter.butler.aeorder.listener;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import greymatter.butler.aeorder.dto.PickInstructionRequestMessage;

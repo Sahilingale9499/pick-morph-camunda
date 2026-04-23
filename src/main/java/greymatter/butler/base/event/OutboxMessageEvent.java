@@ -1,4 +1,4 @@
-package greymatter.butler.aeorder.event;
+package greymatter.butler.base.event;
 
 import lombok.Getter;
 import org.springframework.context.ApplicationEvent;

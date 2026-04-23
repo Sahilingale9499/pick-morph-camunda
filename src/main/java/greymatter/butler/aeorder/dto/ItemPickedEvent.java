@@ -79,6 +79,9 @@ public class ItemPickedEvent {
     @JsonProperty("tote_id")
     private String toteId;
 
+    @JsonProperty("bot_id")
+    private String botId;
+
     @JsonProperty("internal_order_id")
     private Long internalOrderId;
 

@@ -1,21 +1,21 @@
-package greymatter.butler.aeorder.downstream.listener;
+package greymatter.butler.aeorder.listener;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import greymatter.butler.aeorder.dto.ae.PickListEvent;
+import io.camunda.zeebe.client.ZeebeClient;
 import lombok.extern.slf4j.Slf4j;
-import org.camunda.bpm.engine.MismatchingMessageCorrelationException;
-import org.camunda.bpm.engine.RuntimeService;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
 
-import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Map;
 
 /**
  * Kafka listener for AE pick-list.events.
  *
- * Receives all pick-list events (any event_type) and correlates
- * {@code ItemPickingEventMessage} on the Camunda process instance.
+ * Receives all pick-list events (any event_type) and publishes an
+ * {@code ItemPickingEventMessage} Zeebe message to advance the waiting process instance.
  * All business logic — ae_order update, transaction dedup, outbox dispatch —
  * is handled inside {@link greymatter.butler.aeorder.delegates.ProcessPickListEventDelegate}
  * via {@link greymatter.butler.aeorder.service.PickInstructionService#processPickListEvent}.
@@ -27,11 +27,11 @@ import java.nio.charset.StandardCharsets;
 @Slf4j
 public class PickListEventListener {
 
-    private final RuntimeService runtimeService;
+    private final ZeebeClient zeebeClient;
     private final ObjectMapper objectMapper;
 
-    public PickListEventListener(RuntimeService runtimeService, ObjectMapper objectMapper) {
-        this.runtimeService = runtimeService;
+    public PickListEventListener(ZeebeClient zeebeClient, ObjectMapper objectMapper) {
+        this.zeebeClient = zeebeClient;
         this.objectMapper = objectMapper;
     }
 
@@ -68,16 +68,20 @@ public class PickListEventListener {
 
     private void correlateEvent(String pickInstructionId, String rawEventJson) {
         try {
-            runtimeService.createMessageCorrelation("ItemPickingEventMessage")
-                    .processInstanceVariableEquals("pickInstructionId", pickInstructionId)
-                    .setVariable("command", "UPDATE")
-                    .setVariable("pickListEventJson", rawEventJson.getBytes(StandardCharsets.UTF_8))
-                    .correlate();
-            log.info("ItemPickingEventMessage correlated | pickInstructionId: {}", pickInstructionId);
-        } catch (MismatchingMessageCorrelationException e) {
-            log.error("No process instance waiting for pickInstructionId: {} — event dropped", pickInstructionId);
+            zeebeClient.newPublishMessageCommand()
+                    .messageName("ItemPickingEventMessage")
+                    .correlationKey(pickInstructionId)
+                    .variables(Map.of(
+                            "command", "UPDATE",
+                            "pickListEventJson", rawEventJson
+                    ))
+                    .timeToLive(Duration.ofMinutes(5))
+                    .send()
+                    .join();
+            log.info("ItemPickingEventMessage published to Zeebe | pickInstructionId: {}", pickInstructionId);
         } catch (Exception e) {
-            log.error("Failed to correlate event for pickInstructionId: {} | error: {}", pickInstructionId, e.getMessage(), e);
+            log.error("Failed to publish ItemPickingEventMessage for pickInstructionId: {} | error: {}",
+                    pickInstructionId, e.getMessage(), e);
         }
     }
 

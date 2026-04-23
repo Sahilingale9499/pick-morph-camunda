@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+             xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
              xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
              xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
              xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
@@ -11,13 +11,21 @@
   <!-- ═══════════════════════════════════════════════════
        Message definitions for intermediate catch events
        ═══════════════════════════════════════════════════ -->
-  <message id="Message_PickListResponse" name="PickListResponseMessage"/>
-  <message id="Message_ItemPickingEvent" name="ItemPickingEventMessage"/>
+  <message id="Message_PickListResponse" name="PickListResponseMessage">
+    <extensionElements>
+      <zeebe:subscription correlationKey="=pickInstructionId"/>
+    </extensionElements>
+  </message>
+  <message id="Message_ItemPickingEvent" name="ItemPickingEventMessage">
+    <extensionElements>
+      <zeebe:subscription correlationKey="=pickInstructionId"/>
+    </extensionElements>
+  </message>
 
   <!-- ═══════════════════════════════════════════════════
        Main Process
        ═══════════════════════════════════════════════════ -->
-  <process id="pickInstructionProcess" name="Pick Instruction Workflow" isExecutable="true" camunda:historyTimeToLive="P30D">
+  <process id="pickInstructionProcess" name="Pick Instruction Workflow" isExecutable="true">
 
     <!-- ─── Start Event ─── -->
     <startEvent id="startEvent" name="Start">
@@ -25,9 +33,10 @@
     </startEvent>
 
     <!-- ─── Publish Order to Kafka ─── -->
-    <serviceTask id="publishOrderTask"
-                 name="Publish Order to Kafka"
-                 camunda:delegateExpression="${publishOrderToKafkaDelegate}">
+    <serviceTask id="publishOrderTask" name="Publish Order to Kafka">
+      <extensionElements>
+        <zeebe:taskDefinition type="publish-order-to-kafka"/>
+      </extensionElements>
       <incoming>flow_start_to_publishOrder</incoming>
       <outgoing>flow_publishOrder_to_waitValidation</outgoing>
     </serviceTask>
@@ -47,9 +56,10 @@
     </exclusiveGateway>
 
     <!-- ─── [FAIL PATH] Handle validation failure atomically ─── -->
-    <serviceTask id="markFailedValidation"
-                 name="Handle Validation Failure"
-                 camunda:delegateExpression="${handleValidationFailureDelegate}">
+    <serviceTask id="markFailedValidation" name="Handle Validation Failure">
+      <extensionElements>
+        <zeebe:taskDefinition type="handle-validation-failure"/>
+      </extensionElements>
       <incoming>flow_validationGw_failed</incoming>
       <outgoing>flow_markFailedValidation_to_end</outgoing>
     </serviceTask>
@@ -59,9 +69,10 @@
     </endEvent>
 
     <!-- ─── [SUCCESS PATH] Publish pick-instruction.response to butler_server ─── -->
-    <serviceTask id="publishResponseTask"
-                 name="Publish Pick Instruction Response"
-                 camunda:delegateExpression="${publishPickInstructionResponseDelegate}">
+    <serviceTask id="publishResponseTask" name="Publish Pick Instruction Response">
+      <extensionElements>
+        <zeebe:taskDefinition type="publish-pick-instruction-response"/>
+      </extensionElements>
       <incoming>flow_validationGw_to_publishResponse</incoming>
       <outgoing>flow_publishResponse_to_waitTx</outgoing>
     </serviceTask>
@@ -75,9 +86,10 @@
     </intermediateCatchEvent>
 
     <!-- ─── Process Pick-List Event ─── -->
-    <serviceTask id="sendTransactionKafkaTask"
-                 name="Process Pick-List Event"
-                 camunda:delegateExpression="${processPickListEventDelegate}">
+    <serviceTask id="sendTransactionKafkaTask" name="Process Pick-List Event">
+      <extensionElements>
+        <zeebe:taskDefinition type="process-pick-list-event"/>
+      </extensionElements>
       <incoming>flow_waitTx_to_sendTxKafka</incoming>
       <outgoing>flow_sendTxKafka_to_commandGw</outgoing>
     </serviceTask>
@@ -144,7 +156,7 @@
     <sequenceFlow id="flow_validationGw_failed"
                   sourceRef="validationGateway"
                   targetRef="markFailedValidation">
-      <conditionExpression xsi:type="tFormalExpression">${validationSuccess == false}</conditionExpression>
+      <conditionExpression xsi:type="tFormalExpression">=validationSuccess = false</conditionExpression>
     </sequenceFlow>
 
     <!-- Validation Gateway → Publish Response (default: validationSuccess == true) -->
@@ -171,13 +183,13 @@
     <sequenceFlow id="flow_commandGw_cancel"
                   sourceRef="commandGateway"
                   targetRef="endCancel">
-      <conditionExpression xsi:type="tFormalExpression">${command == 'CANCEL'}</conditionExpression>
+      <conditionExpression xsi:type="tFormalExpression">=command = "CANCEL"</conditionExpression>
     </sequenceFlow>
 
     <sequenceFlow id="flow_commandGw_complete"
                   sourceRef="commandGateway"
                   targetRef="endComplete">
-      <conditionExpression xsi:type="tFormalExpression">${command == 'COMPLETE'}</conditionExpression>
+      <conditionExpression xsi:type="tFormalExpression">=command = "COMPLETE"</conditionExpression>
     </sequenceFlow>
 
     <sequenceFlow id="flow_commandGw_update"
@@ -187,7 +199,7 @@
     <sequenceFlow id="flow_txFailedGw_failed"
                   sourceRef="txFailedGateway"
                   targetRef="endTxFailed">
-      <conditionExpression xsi:type="tFormalExpression">${txStatus == 'FAILED'}</conditionExpression>
+      <conditionExpression xsi:type="tFormalExpression">=txStatus = "FAILED"</conditionExpression>
     </sequenceFlow>
 
     <sequenceFlow id="flow_txFailedGw_notFailed"
@@ -197,7 +209,7 @@
     <sequenceFlow id="flow_updateResultGw_successComplete"
                   sourceRef="updateResultGateway"
                   targetRef="endUpdateComplete">
-      <conditionExpression xsi:type="tFormalExpression">${txComplete == true}</conditionExpression>
+      <conditionExpression xsi:type="tFormalExpression">=txComplete = true</conditionExpression>
     </sequenceFlow>
 
     <!-- Loop back: in-progress → wait for next transaction event -->

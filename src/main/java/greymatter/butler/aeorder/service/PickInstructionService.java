@@ -8,13 +8,14 @@ import greymatter.butler.aeorder.dto.OrderUpdateEvent;
 import greymatter.butler.aeorder.dto.PickInstruction;
 import greymatter.butler.aeorder.dto.ae.PickListEvent;
 import greymatter.butler.aeorder.model.AeOrder;
-import greymatter.butler.aeorder.model.AeOrdersMapping;
-import greymatter.butler.aeorder.model.OutboxEvent;
+import greymatter.butler.base.model.OrderMapping;
+import greymatter.butler.base.model.Outbox;
 import greymatter.butler.aeorder.model.TransactionStatus;
 import greymatter.butler.aeorder.repository.AeOrderRepository;
-import greymatter.butler.aeorder.repository.AeOrdersMappingRepository;
-import greymatter.butler.aeorder.repository.OutboxEventRepository;
+import greymatter.butler.base.repository.OrderMappingRepository;
+import greymatter.butler.base.repository.OutboxEventRepository;
 import greymatter.butler.aeorder.repository.TransactionStatusRepository;
+import greymatter.butler.base.service.OutboxService;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,7 +24,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -44,7 +44,7 @@ public class PickInstructionService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final TransactionStatusRepository transactionStatusRepository;
     private final AeOrderRepository aeOrderRepository;
-    private final AeOrdersMappingRepository aeOrdersMappingRepository;
+    private final OrderMappingRepository aeOrdersMappingRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final ObjectMapper objectMapper;
     private final AeOrderBuilderService aeOrderBuilderService;
@@ -66,7 +66,7 @@ public class PickInstructionService {
     public PickInstructionService(KafkaTemplate<String, Object> kafkaTemplate,
                                   TransactionStatusRepository transactionStatusRepository,
                                   AeOrderRepository aeOrderRepository,
-                                  AeOrdersMappingRepository aeOrdersMappingRepository,
+                                  OrderMappingRepository aeOrdersMappingRepository,
                                   OutboxEventRepository outboxEventRepository,
                                   ObjectMapper objectMapper,
                                   AeOrderBuilderService aeOrderBuilderService,
@@ -153,8 +153,8 @@ public class PickInstructionService {
                             .isDeleted(false)
                             .stages("[]")
                             .onHold(false)
-                            .createdAt(LocalDateTime.now())
-                            .updatedAt(LocalDateTime.now())
+                            .createdAt(Instant.now())
+                            .updatedAt(Instant.now())
                             .build();
                 });
 
@@ -189,11 +189,11 @@ public class PickInstructionService {
             }
 
             // ── Level 2: per-child AeOrder selective update ───────────────────
-            List<AeOrdersMapping> mappings = aeOrdersMappingRepository
+            List<OrderMapping> mappings = aeOrdersMappingRepository
                     .findByParentExternalServiceRequestId(pickInstructionId);
             List<Map<String, Object>> childStatusMaps = new ArrayList<>();
 
-            for (AeOrdersMapping mapping : mappings) {
+            for (OrderMapping mapping : mappings) {
                 String childId = mapping.getChildExternalServiceRequestId();
                 Optional<AeOrder> childOpt = aeOrderRepository.findByExternalServiceRequestId(childId);
                 if (childOpt.isEmpty()) continue;
@@ -242,7 +242,7 @@ public class PickInstructionService {
                             ? objectMapper.readValue(child.getExpectations(), new TypeReference<Map<String, Object>>() {}) : null);
                     String olStatus = AeOrderStatusCalculator.computeOlStatus(srMap);
                     child.setStatus(olStatus);
-                    child.setUpdatedAt(LocalDateTime.now());
+                    child.setUpdatedAt(Instant.now());
                     aeOrderRepository.save(child);
                     Map<String, Object> statusEntry = new LinkedHashMap<>();
                     statusEntry.put("status", olStatus);
@@ -255,7 +255,7 @@ public class PickInstructionService {
             // ── Level 3: derive aggregate order status from children ──────────
             computedOrderStatus = AeOrderStatusCalculator.computeOrderStatus(childStatusMaps);
             parent.setStatus(computedOrderStatus);
-            parent.setUpdatedAt(LocalDateTime.now());
+            parent.setUpdatedAt(Instant.now());
             aeOrderRepository.save(parent);
             log.info("Updated ae_order | pickInstructionId: {}, state: {}, orderStatus: {}",
                     pickInstructionId, evtPayload.getState(), computedOrderStatus);
@@ -343,7 +343,7 @@ public class PickInstructionService {
                                 }
                                 String exItemPickedTxId = pickInstructionId + "_" + internalOrderId;
                                 ItemPickedEvent.ExceptionInfo exceptionInfo = buildExceptionInfo(sr.getExceptions(), exTxId);
-                                buildAndSaveItemPickedEvent(pickInstructionId, pi, exItemPickedTxId, null, 0, "bot", exceptionInfo, null, internalOrderId, null);
+                                buildAndSaveItemPickedEvent(pickInstructionId, pi, exItemPickedTxId, null, 0, "bot", exceptionInfo, null, internalOrderId, null, null);
                                 log.info("Enqueued ItemPickedEvent (exception-only) | pickInstructionId: {} | txId: {} | exTxId: {} | exState: {}",
                                         pickInstructionId, exItemPickedTxId, exTxId, ex.getState());
                                 itemPickedDispatched = true;
@@ -398,7 +398,7 @@ public class PickInstructionService {
 
             buildAndSaveItemPickedEvent(pickInstructionId, pi, itemPickedTxId,
                     tx.getTransactionState(), pickedQty, danglingArea, exceptionInfo, toteId, internalOrderId,
-                    tx.getContainerAttributes().getStatus());
+                    tx.getContainerAttributes().getStatus(), tx.getContainerAttributes().getBotId());
             log.info("Enqueued ItemPickedEvent | pickInstructionId: {} | txId: {} | containerStatus: {} | danglingArea: {}",
                     pickInstructionId, tx.getTransactionId(),
                     tx.getContainerAttributes() != null ? tx.getContainerAttributes().getStatus() : "?",
@@ -480,7 +480,8 @@ public class PickInstructionService {
             ItemPickedEvent.ExceptionInfo exceptionInfo,
             String toteId,
             Long internalOrderId,
-            String containerStatus) {
+            String containerStatus,
+            String botId) {
 
         ItemPickedEvent.PickedItemInfo itemInfo = ItemPickedEvent.PickedItemInfo.builder()
                 .tpid(pi.getTpid())
@@ -500,6 +501,7 @@ public class PickInstructionService {
                 .state(transactionState)
                 .danglingArea(danglingArea)
                 .toteId(toteId)
+                .botId(botId)
                 .internalOrderId(internalOrderId)
                 .status(containerStatus)
                 .isMarkedContainerFlow(false)

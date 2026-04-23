@@ -1,4 +1,4 @@
-package greymatter.butler.aeorder.grpc;
+package greymatter.butler.aeorder.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

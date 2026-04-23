@@ -3,9 +3,9 @@ package greymatter.butler.aeorder.delegates;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import greymatter.butler.aeorder.dto.PickInstruction;
 import greymatter.butler.aeorder.service.PickInstructionService;
+import io.camunda.client.annotation.JobWorker;
+import io.camunda.client.annotation.Variable;
 import lombok.extern.slf4j.Slf4j;
-import org.camunda.bpm.engine.delegate.DelegateExecution;
-import org.camunda.bpm.engine.delegate.JavaDelegate;
 import org.springframework.stereotype.Component;
 
 /**
@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Slf4j
-public class PublishOrderToKafkaDelegate implements JavaDelegate {
+public class PublishOrderToKafkaDelegate {
 
     private final PickInstructionService pickInstructionService;
     private final ObjectMapper objectMapper;
@@ -25,9 +25,8 @@ public class PublishOrderToKafkaDelegate implements JavaDelegate {
         this.objectMapper = objectMapper;
     }
 
-    @Override
-    public void execute(DelegateExecution execution) throws Exception {
-        String instructionJson = (String) execution.getVariable("instructionJson");
+    @JobWorker(type = "publish-order-to-kafka")
+    public void publishOrder(@Variable String instructionJson) throws Exception {
         PickInstruction msg = objectMapper.readValue(instructionJson, PickInstruction.class);
         log.info("PublishOrderToKafkaDelegate executing for pickId: {}", msg.getId());
         pickInstructionService.publishPickListRequest(msg);

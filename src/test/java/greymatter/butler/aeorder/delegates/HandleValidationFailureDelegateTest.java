@@ -2,14 +2,13 @@ package greymatter.butler.aeorder.delegates;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import greymatter.butler.aeorder.repository.AeOrderRepository;
-import greymatter.butler.aeorder.repository.AeOrdersMappingRepository;
-import greymatter.butler.aeorder.repository.OutboxEventRepository;
+import greymatter.butler.base.repository.OrderMappingRepository;
+import greymatter.butler.base.repository.OutboxEventRepository;
 import greymatter.butler.aeorder.repository.TransactionStatusRepository;
 import greymatter.butler.aeorder.service.AeOrderBuilderService;
 import greymatter.butler.aeorder.service.AeOrderPersistenceService;
-import greymatter.butler.aeorder.service.OutboxService;
+import greymatter.butler.base.service.OutboxService;
 import greymatter.butler.aeorder.service.PickInstructionService;
-import org.camunda.bpm.engine.delegate.DelegateExecution;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,7 +21,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 /**
  * Tests {@link HandleValidationFailureDelegate} end-to-end with a real
@@ -36,14 +34,12 @@ class HandleValidationFailureDelegateTest {
     @Mock KafkaTemplate<String, Object> kafkaTemplate;
     @Mock TransactionStatusRepository transactionStatusRepository;
     @Mock AeOrderRepository aeOrderRepository;
-    @Mock AeOrdersMappingRepository aeOrdersMappingRepository;
+    @Mock OrderMappingRepository orderMappingRepository;
     @Mock OutboxEventRepository outboxEventRepository;
     @Mock ObjectMapper objectMapper;
     @Mock AeOrderBuilderService aeOrderBuilderService;
     @Mock AeOrderPersistenceService aeOrderPersistenceService;
     @Mock OutboxService outboxService;
-
-    @Mock DelegateExecution execution;
 
     @InjectMocks PickInstructionService service;
 
@@ -59,16 +55,10 @@ class HandleValidationFailureDelegateTest {
     }
 
     @Test
-    void execute_marks_ae_order_failed_and_enqueues_failure_response() throws Exception {
-        when(execution.getVariable("pickId")).thenReturn("PI-1");
-        when(execution.getVariable("validationStatus")).thenReturn("FAILED");
-        when(execution.getVariable("validationOrderId")).thenReturn("ORD-1");
-        when(execution.getVariable("validationOrderlineId")).thenReturn("OL-1");
-        when(execution.getVariable("validationMessage")).thenReturn("Stock not found");
-        when(execution.getVariable("validationErrorCode")).thenReturn("ERR-404");
-        when(execution.getVariable("validationErrors")).thenReturn(null);
-
-        delegate.execute(execution);
+    void handleFailure_marks_ae_order_failed_and_enqueues_failure_response() throws Exception {
+        delegate.handleFailure(
+                "PI-1", "FAILED", "ORD-1", "OL-1",
+                "Stock not found", "ERR-404", null);
 
         verify(aeOrderPersistenceService).markAsFailed("PI-1");
         verify(outboxService).save(

@@ -1,4 +1,4 @@
-package greymatter.butler.aeorder.dto;
+package greymatter.butler.base.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;

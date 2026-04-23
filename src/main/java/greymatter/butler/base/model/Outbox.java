@@ -1,4 +1,4 @@
-package greymatter.butler.aeorder.model;
+package greymatter.butler.base.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,6 +10,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import greymatter.butler.base.converter.JsonbConverter;
+import jakarta.persistence.Convert;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -20,7 +22,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class OutboxEvent {
+public class Outbox {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -34,6 +36,7 @@ public class OutboxEvent {
     private String topic;
 
     @Column(nullable = false, columnDefinition = "jsonb")
+    @Convert(converter = JsonbConverter.class)
     private String payload;
 
     @Column(nullable = false)

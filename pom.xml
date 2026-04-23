@@ -28,14 +28,13 @@
 	</scm>
 	<properties>
 		<java.version>17</java.version>
-		<grpc.version>1.58.0</grpc.version>
-		<protobuf.version>3.25.1</protobuf.version>
+		<grpc.version>1.76.3</grpc.version>
+		<protobuf.version>4.31.1</protobuf.version>
 		<protoc.version>3.25.1</protoc.version>
 	</properties>
-	
+
 	<dependencyManagement>
 		<dependencies>
-			<!-- Force consistent protobuf version across all dependencies -->
 			<dependency>
 				<groupId>com.google.protobuf</groupId>
 				<artifactId>protobuf-java</artifactId>
@@ -48,15 +47,9 @@
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
-	
+
 	<dependencies>
-		<!-- Explicit protobuf dependency -->
-		<dependency>
-			<groupId>com.google.protobuf</groupId>
-			<artifactId>protobuf-java</artifactId>
-			<version>${protobuf.version}</version>
-		</dependency>
-		<!-- gRPC dependencies -->
+		<!-- gRPC dependencies for butler pick gRPC client -->
 		<dependency>
 			<groupId>io.grpc</groupId>
 			<artifactId>grpc-netty-shaded</artifactId>
@@ -102,34 +95,11 @@
     		<artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
     		<version>2.8.8</version> <!-- Use the latest version from Maven Repository -->
 		</dependency>
-		<!-- Camunda BPM Spring Boot Starter (Spring Boot 3 compatible) -->
+		<!-- Camunda 8.8 Spring Boot Starter (Zeebe-based) -->
 		<dependency>
-			<groupId>org.camunda.bpm.springboot</groupId>
-			<artifactId>camunda-bpm-spring-boot-starter</artifactId>
-			<version>7.22.0</version>
-		</dependency>
-		<!-- Camunda Web Apps: Cockpit, Tasklist, Admin UI -->
-		<dependency>
-			<groupId>org.camunda.bpm.springboot</groupId>
-			<artifactId>camunda-bpm-spring-boot-starter-webapp</artifactId>
-			<version>7.22.0</version>
-		</dependency>
-		<!-- Camunda REST API -->
-		<dependency>
-			<groupId>org.camunda.bpm.springboot</groupId>
-			<artifactId>camunda-bpm-spring-boot-starter-rest</artifactId>
-			<version>7.22.0</version>
-		</dependency>
-		<!-- Camunda Spin for JSON variable serialization -->
-		<dependency>
-			<groupId>org.camunda.bpm</groupId>
-			<artifactId>camunda-engine-plugin-spin</artifactId>
-			<version>7.22.0</version>
-		</dependency>
-		<dependency>
-			<groupId>org.camunda.spin</groupId>
-			<artifactId>camunda-spin-dataformat-json-jackson</artifactId>
-			<version>1.18.3</version>
+			<groupId>io.camunda</groupId>
+			<artifactId>spring-boot-starter-camunda-sdk</artifactId>
+			<version>8.8.22</version>
 		</dependency>
 		<dependency>
 		    <groupId>org.springframework.kafka</groupId>
@@ -157,7 +127,6 @@
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
-			<scope>runtime</scope>
 		</dependency>
 	</dependencies>
 

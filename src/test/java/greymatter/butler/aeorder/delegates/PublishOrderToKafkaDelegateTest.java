@@ -4,14 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import greymatter.butler.aeorder.dto.AePickListRequest;
 import greymatter.butler.aeorder.dto.PickInstruction;
 import greymatter.butler.aeorder.repository.AeOrderRepository;
-import greymatter.butler.aeorder.repository.AeOrdersMappingRepository;
-import greymatter.butler.aeorder.repository.OutboxEventRepository;
+import greymatter.butler.base.repository.OrderMappingRepository;
+import greymatter.butler.base.repository.OutboxEventRepository;
 import greymatter.butler.aeorder.repository.TransactionStatusRepository;
 import greymatter.butler.aeorder.service.AeOrderBuilderService;
 import greymatter.butler.aeorder.service.AeOrderPersistenceService;
-import greymatter.butler.aeorder.service.OutboxService;
+import greymatter.butler.base.service.OutboxService;
 import greymatter.butler.aeorder.service.PickInstructionService;
-import org.camunda.bpm.engine.delegate.DelegateExecution;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,14 +35,12 @@ class PublishOrderToKafkaDelegateTest {
     @Mock KafkaTemplate<String, Object> kafkaTemplate;
     @Mock TransactionStatusRepository transactionStatusRepository;
     @Mock AeOrderRepository aeOrderRepository;
-    @Mock AeOrdersMappingRepository aeOrdersMappingRepository;
+    @Mock OrderMappingRepository orderMappingRepository;
     @Mock OutboxEventRepository outboxEventRepository;
     @Mock ObjectMapper objectMapper;
     @Mock AeOrderBuilderService aeOrderBuilderService;
     @Mock AeOrderPersistenceService aeOrderPersistenceService;
     @Mock OutboxService outboxService;
-
-    @Mock DelegateExecution execution;
 
     @InjectMocks PickInstructionService service;
 
@@ -60,19 +57,17 @@ class PublishOrderToKafkaDelegateTest {
     }
 
     @Test
-    void execute_deserializes_json_and_publishes_pick_list_request() throws Exception {
+    void publishOrder_deserializes_json_and_publishes_pick_list_request() throws Exception {
         PickInstruction msg = new PickInstruction();
         msg.setId("PI-1");
         String json = new ObjectMapper().writeValueAsString(msg);
-
-        when(execution.getVariable("instructionJson")).thenReturn(json);
 
         AePickListRequest aeOrder = AePickListRequest.builder()
                 .externalServiceRequestId("PI-1")
                 .build();
         when(aeOrderBuilderService.build(any(PickInstruction.class))).thenReturn(aeOrder);
 
-        delegate.execute(execution);
+        delegate.publishOrder(json);
 
         verify(aeOrderPersistenceService).saveAeOrder(aeOrder);
         verify(outboxService).save("pick-list.requests", "PI-1", aeOrder, "pick_list_request");

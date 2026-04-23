@@ -3,14 +3,14 @@ package greymatter.butler.aeorder.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import greymatter.butler.aeorder.dto.AePickListRequest;
 import greymatter.butler.aeorder.model.AeOrder;
-import greymatter.butler.aeorder.model.AeOrdersMapping;
+import greymatter.butler.base.model.OrderMapping;
 import greymatter.butler.aeorder.repository.AeOrderRepository;
-import greymatter.butler.aeorder.repository.AeOrdersMappingRepository;
+import greymatter.butler.base.repository.OrderMappingRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -21,11 +21,11 @@ import java.util.List;
 public class AeOrderPersistenceService {
 
     private final AeOrderRepository aeOrderRepository;
-    private final AeOrdersMappingRepository aeOrdersMappingRepository;
+    private final OrderMappingRepository aeOrdersMappingRepository;
     private final ObjectMapper objectMapper;
 
     public AeOrderPersistenceService(AeOrderRepository aeOrderRepository,
-                                     AeOrdersMappingRepository aeOrdersMappingRepository,
+                                     OrderMappingRepository aeOrdersMappingRepository,
                                      ObjectMapper objectMapper) {
         this.aeOrderRepository = aeOrderRepository;
         this.aeOrdersMappingRepository = aeOrdersMappingRepository;
@@ -44,7 +44,7 @@ public class AeOrderPersistenceService {
             return;
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
         try {
             AeOrder parent = AeOrder.builder()
                     .externalServiceRequestId(pickId)
@@ -86,7 +86,7 @@ public class AeOrderPersistenceService {
                     aeOrderRepository.save(child);
                 }
 
-                AeOrdersMapping mapping = AeOrdersMapping.builder()
+                OrderMapping mapping = OrderMapping.builder()
                         .parentExternalServiceRequestId(pickId)
                         .childExternalServiceRequestId(childId)
                         .createdAt(now)
@@ -104,7 +104,7 @@ public class AeOrderPersistenceService {
      */
     @Transactional
     public void markAsFailed(String pickId) {
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
 
         aeOrderRepository.findByExternalServiceRequestId(pickId).ifPresent(parent -> {
             parent.setState("FAILED");
@@ -115,9 +115,9 @@ public class AeOrderPersistenceService {
             log.info("Marked parent AE order as FAILED | externalServiceRequestId: {}", pickId);
         });
 
-        List<AeOrdersMapping> mappings = aeOrdersMappingRepository
+        List<OrderMapping> mappings = aeOrdersMappingRepository
                 .findByParentExternalServiceRequestId(pickId);
-        for (AeOrdersMapping mapping : mappings) {
+        for (OrderMapping mapping : mappings) {
             aeOrderRepository.findByExternalServiceRequestId(
                     mapping.getChildExternalServiceRequestId()).ifPresent(child -> {
                 child.setState("FAILED");

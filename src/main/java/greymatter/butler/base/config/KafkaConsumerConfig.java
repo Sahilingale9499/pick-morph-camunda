@@ -1,4 +1,4 @@
-package greymatter.butler.aeorder.config;
+package greymatter.butler.base.config;
 
 import java.util.HashMap;
 import java.util.Map;

@@ -1,4 +1,4 @@
-package greymatter.butler.aeorder.config;
+package greymatter.butler.base.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;

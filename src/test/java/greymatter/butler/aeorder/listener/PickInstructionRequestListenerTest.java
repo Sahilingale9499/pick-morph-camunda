@@ -1,4 +1,4 @@
-package greymatter.butler.aeorder.downstream.listener;
+package greymatter.butler.aeorder.listener;
 
 import greymatter.butler.aeorder.dto.PickInstruction;
 import org.junit.jupiter.api.Test;

@@ -1,13 +1,13 @@
-package greymatter.butler.aeorder.repository;
+package greymatter.butler.base.repository;
 
-import greymatter.butler.aeorder.model.OutboxEvent;
+import greymatter.butler.base.model.Outbox;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 import java.util.UUID;
 
-public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> {
+public interface OutboxEventRepository extends JpaRepository<Outbox, UUID> {
 
     /**
      * Fetches up to 100 PENDING outbox events ordered by creation time, locking each
@@ -23,5 +23,5 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> 
             LIMIT 100
             FOR UPDATE SKIP LOCKED
             """, nativeQuery = true)
-    List<OutboxEvent> findPendingForUpdate();
+    List<Outbox> findPendingForUpdate();
 }

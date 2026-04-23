@@ -1,4 +1,4 @@
-package greymatter.butler.aeorder;
+package greymatter.butler;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

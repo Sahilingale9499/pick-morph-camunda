@@ -3,7 +3,7 @@ package greymatter.butler.aeorder.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import greymatter.butler.aeorder.client.LocationApiClient;
-import greymatter.butler.aeorder.grpc.ButlerPickOrderGrpcClient;
+import greymatter.butler.aeorder.client.ButlerPickOrderGrpcClient;
 import greymatter.butler.aeorder.dto.AePickListRequest;
 import greymatter.butler.aeorder.dto.PickInstruction;
 import lombok.extern.slf4j.Slf4j;

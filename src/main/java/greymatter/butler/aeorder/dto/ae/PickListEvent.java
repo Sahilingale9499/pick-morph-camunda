@@ -67,6 +67,7 @@ public class PickListEvent {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Payload {
 
         @JsonProperty("id")
@@ -115,6 +116,7 @@ public class PickListEvent {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class PayloadAttributes {
 
         @JsonProperty("event_type")
@@ -139,6 +141,7 @@ public class PickListEvent {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ServiceRequest {
 
         @JsonProperty("id")
@@ -194,6 +197,7 @@ public class PickListEvent {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ServiceRequestAttributes {
 
         @JsonProperty("sub_state")
@@ -204,6 +208,9 @@ public class PickListEvent {
 
         @JsonProperty("simple_priority")
         private String simplePriority;
+
+        @JsonProperty("location")
+        private Object location;
     }
 
     // ── Transaction ──────────────────────────────────────────────────────────
@@ -212,6 +219,7 @@ public class PickListEvent {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Transaction {
 
         @JsonProperty("transactionId")
@@ -365,6 +373,7 @@ public class PickListEvent {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ContainerAttributes {
 
         @JsonProperty("internal_order_id")
@@ -393,6 +402,6 @@ public class PickListEvent {
         private String toteId;
 
         @JsonProperty("location")
-        private String location;
+        private Object location;
     }
 }

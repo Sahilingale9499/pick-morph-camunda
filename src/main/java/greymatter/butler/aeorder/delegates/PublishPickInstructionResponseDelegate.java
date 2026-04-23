@@ -1,9 +1,9 @@
 package greymatter.butler.aeorder.delegates;
 
 import greymatter.butler.aeorder.service.PickInstructionService;
+import io.camunda.client.annotation.JobWorker;
+import io.camunda.client.annotation.Variable;
 import lombok.extern.slf4j.Slf4j;
-import org.camunda.bpm.engine.delegate.DelegateExecution;
-import org.camunda.bpm.engine.delegate.JavaDelegate;
 import org.springframework.stereotype.Component;
 
 /**
@@ -11,18 +11,12 @@ import org.springframework.stereotype.Component;
  * butler_server is notified whether the AE order was accepted or rejected.
  * Uses the transactional outbox via PickInstructionService.
  *
- * Reads process variables:
- *   pickId                - pick instruction ID
- *   validationStatus      - "SUCCESS" or "FAILURE" from SRMS
- *   validationOrderId     - serviceRequestId from SRMS (String, null on FAILURE)
- *   validationOrderlineId - serviceRequestId from serviceRequests[0] (String, SUCCESS only)
- *   validationMessage     - message from SRMS response
- *   validationErrorCode   - errorCode from SRMS response (FAILURE only)
- *   validationErrors      - JSON-serialized errors array (FAILURE only)
+ * orderId and orderlineId are read directly from process-start variables (no listener pre-fetch
+ * needed in Camunda 8 — all process variables are visible to job workers).
  */
 @Component
 @Slf4j
-public class PublishPickInstructionResponseDelegate implements JavaDelegate {
+public class PublishPickInstructionResponseDelegate {
 
     private final PickInstructionService pickInstructionService;
 
@@ -30,17 +24,18 @@ public class PublishPickInstructionResponseDelegate implements JavaDelegate {
         this.pickInstructionService = pickInstructionService;
     }
 
-    @Override
-    public void execute(DelegateExecution execution) throws Exception {
-        String pickId      = (String) execution.getVariable("pickId");
-        String status      = (String) execution.getVariable("validationStatus");
-        String orderId     = (String) execution.getVariable("validationOrderId");
-        String orderlineId = (String) execution.getVariable("validationOrderlineId");
-        String message     = (String) execution.getVariable("validationMessage");
-        String errorCode   = (String) execution.getVariable("validationErrorCode");
-        String errorsJson  = (String) execution.getVariable("validationErrors");
-
-        pickInstructionService.publishPickInstructionResponse(pickId, status, orderId, orderlineId, message, errorCode, errorsJson);
-        log.info("Queued pick-instruction.response via outbox | pickId: {} | status: {}", pickId, status);
+    @JobWorker(type = "publish-pick-instruction-response")
+    public void publishResponse(
+            @Variable String pickId,
+            @Variable String validationStatus,
+            @Variable String orderId,
+            @Variable String orderlineId,
+            @Variable String validationMessage,
+            @Variable String validationErrorCode,
+            @Variable String validationErrors) throws Exception {
+        pickInstructionService.publishPickInstructionResponse(
+                pickId, validationStatus, orderId, orderlineId,
+                validationMessage, validationErrorCode, validationErrors);
+        log.info("Queued pick-instruction.response via outbox | pickId: {} | status: {}", pickId, validationStatus);
     }
 }

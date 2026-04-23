@@ -1,13 +1,14 @@
-package greymatter.butler.aeorder.service;
+package greymatter.butler.base.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import greymatter.butler.aeorder.dto.KafkaEventEnvelope;
-import greymatter.butler.aeorder.event.OutboxMessageEvent;
-import greymatter.butler.aeorder.model.OutboxEvent;
-import greymatter.butler.aeorder.repository.OutboxEventRepository;
+import greymatter.butler.base.dto.KafkaEventEnvelope;
+import greymatter.butler.base.event.OutboxMessageEvent;
+import greymatter.butler.base.model.Outbox;
+import greymatter.butler.base.repository.OutboxEventRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,7 @@ public class OutboxService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final JdbcTemplate jdbcTemplate;
 
     @Value("${outbox.publish.max-retries:3}")
     private int maxRetries;
@@ -47,11 +49,13 @@ public class OutboxService {
     public OutboxService(OutboxEventRepository outboxEventRepository,
                          KafkaTemplate<String, Object> kafkaTemplate,
                          ObjectMapper objectMapper,
-                         ApplicationEventPublisher applicationEventPublisher) {
+                         ApplicationEventPublisher applicationEventPublisher,
+                         JdbcTemplate jdbcTemplate) {
         this.outboxEventRepository = outboxEventRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /**
@@ -74,15 +78,13 @@ public class OutboxService {
             envelope.setContext(ctx);
 
             String payloadJson = objectMapper.writeValueAsString(envelope);
-            OutboxEvent event = OutboxEvent.builder()
-                    .messageKey(key)
-                    .topic(topic)
-                    .payload(payloadJson)
-                    .published(false)
-                    .createdAt(Instant.now())
-                    .build();
-            outboxEventRepository.save(event);
-            applicationEventPublisher.publishEvent(new OutboxMessageEvent(this, event.getId()));
+            UUID id = UUID.randomUUID();
+            jdbcTemplate.update(
+                "INSERT INTO outbox (id, topic, message_key, payload, published, created_at) " +
+                "VALUES (?::uuid, ?, ?, ?::jsonb, false, now())",
+                id.toString(), topic, key, payloadJson
+            );
+            applicationEventPublisher.publishEvent(new OutboxMessageEvent(this, id));
         } catch (Exception e) {
             throw new RuntimeException("Failed to write outbox event for topic: " + topic, e);
         }
@@ -94,8 +96,8 @@ public class OutboxService {
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onOutboxEvent(OutboxMessageEvent event) {
-        OutboxEvent outbox = outboxEventRepository.findById(event.getOutboxEventId()).orElse(null);
+    public void onOutbox(OutboxMessageEvent event) {
+        Outbox outbox = outboxEventRepository.findById(event.getOutboxEventId()).orElse(null);
         if (outbox == null || outbox.isPublished()) {
             return;
         }
@@ -104,9 +106,10 @@ public class OutboxService {
             try {
                 Object parsedPayload = parsePayload(outbox.getPayload());
                 kafkaTemplate.send(outbox.getTopic(), outbox.getMessageKey(), parsedPayload).get();
-                outbox.setPublished(true);
-                outbox.setPublishedAt(Instant.now());
-                outboxEventRepository.save(outbox);
+                jdbcTemplate.update(
+                    "UPDATE outbox SET published = true, published_at = now() WHERE id = ?::uuid",
+                    outbox.getId().toString()
+                );
                 return;
             } catch (Exception e) {
                 if (attempt < maxRetries) {
@@ -132,19 +135,20 @@ public class OutboxService {
     @Scheduled(fixedDelayString = "${outbox.poller.interval-ms:5000}")
     @Transactional
     public void publishPendingEvents() {
-        List<OutboxEvent> pending = outboxEventRepository.findPendingForUpdate();
+        List<Outbox> pending = outboxEventRepository.findPendingForUpdate();
         if (pending.isEmpty()) {
             return;
         }
 
         log.info("Outbox poller: found {} unpublished events", pending.size());
-        for (OutboxEvent event : pending) {
+        for (Outbox event : pending) {
             try {
                 Object parsedPayload = parsePayload(event.getPayload());
                 kafkaTemplate.send(event.getTopic(), event.getMessageKey(), parsedPayload).get();
-                event.setPublished(true);
-                event.setPublishedAt(Instant.now());
-                outboxEventRepository.save(event);
+                jdbcTemplate.update(
+                    "UPDATE outbox SET published = true, published_at = now() WHERE id = ?::uuid",
+                    event.getId().toString()
+                );
                 log.info("Outbox poller: published id={} topic={}", event.getId(), event.getTopic());
             } catch (Exception e) {
                 log.warn("Outbox poller: failed to publish id={} topic={} — will retry next cycle",

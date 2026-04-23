@@ -4,18 +4,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import greymatter.butler.aeorder.dto.PickInstruction;
 import greymatter.butler.aeorder.dto.ae.PickListEvent;
 import greymatter.butler.aeorder.service.PickInstructionService;
+import io.camunda.client.annotation.JobWorker;
+import io.camunda.client.annotation.Variable;
 import lombok.extern.slf4j.Slf4j;
-import org.camunda.bpm.engine.delegate.DelegateExecution;
-import org.camunda.bpm.engine.delegate.JavaDelegate;
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Unified delegate that processes every pick-list event regardless of event_type.
  *
- * Replaces SendItemPickedEventDelegate. Delegates all business logic to
- * {@link PickInstructionService#processPickListEvent}, which:
+ * Delegates all business logic to {@link PickInstructionService#processPickListEvent}, which:
  *   1. Updates ae_order.
  *   2. For every transaction whose container status is new (dedup check):
  *        loaded / complete  → ItemPickedEvent (danglingArea = "bot")
@@ -27,7 +27,7 @@ import java.nio.charset.StandardCharsets;
  */
 @Component
 @Slf4j
-public class ProcessPickListEventDelegate implements JavaDelegate {
+public class ProcessPickListEventDelegate {
 
     private final PickInstructionService pickInstructionService;
     private final ObjectMapper objectMapper;
@@ -38,16 +38,11 @@ public class ProcessPickListEventDelegate implements JavaDelegate {
         this.objectMapper = objectMapper;
     }
 
-    @Override
-    public void execute(DelegateExecution execution) throws Exception {
-        String pickInstructionId = (String) execution.getVariable("pickInstructionId");
-        String instructionJson   = (String) execution.getVariable("instructionJson");
-
-        Object rawEvent = execution.getVariable("pickListEventJson");
-        String pickListEventJson = rawEvent instanceof byte[]
-                ? new String((byte[]) rawEvent, StandardCharsets.UTF_8)
-                : (String) rawEvent;
-
+    @JobWorker(type = "process-pick-list-event")
+    public Map<String, Object> processEvent(
+            @Variable String pickInstructionId,
+            @Variable String instructionJson,
+            @Variable String pickListEventJson) throws Exception {
         PickInstruction pickInstruction = objectMapper.readValue(instructionJson, PickInstruction.class);
         PickListEvent   pickListEvent   = objectMapper.readValue(pickListEventJson, PickListEvent.class);
 
@@ -56,13 +51,13 @@ public class ProcessPickListEventDelegate implements JavaDelegate {
         String orderStatus = pickInstructionService.processPickListEvent(
                 pickInstructionId, pickListEvent, pickInstruction);
 
+        Map<String, Object> out = new HashMap<>();
         if ("released".equals(orderStatus)) {
             log.info("Order released for pickInstructionId: {} — triggering workflow completion", pickInstructionId);
-            execution.setVariable("command", "COMPLETE");
+            out.put("command", "COMPLETE");
         }
-
-        // txStatus drives txFailedGateway; txComplete drives updateResultGateway
-        execution.setVariable("txStatus", "SUCCESS");
-        execution.setVariable("txComplete", false);
+        out.put("txStatus", "SUCCESS");
+        out.put("txComplete", false);
+        return out;
     }
 }

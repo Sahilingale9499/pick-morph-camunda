@@ -1,4 +1,4 @@
-package greymatter.butler.aeorder.model;
+package greymatter.butler.base.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -11,15 +11,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
-@Table(name = "ae_orders_mapping")
+@Table(name = "order_mapping")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AeOrdersMapping {
+public class OrderMapping {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,8 +32,8 @@ public class AeOrdersMapping {
     private String childExternalServiceRequestId;
 
     @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 }
