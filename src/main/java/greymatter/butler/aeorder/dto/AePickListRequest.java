@@ -11,7 +11,7 @@ import java.util.Map;
 @Data
 @Builder
 @JsonInclude(JsonInclude.Include.ALWAYS)
-@JsonPropertyOrder({"externalServiceRequestId", "serviceRequests", "fulfillmentArea", "attributes", "type", "is_deleted", "stages", "on_hold"})
+@JsonPropertyOrder({"externalServiceRequestId", "serviceRequests", "fulfillmentArea", "is_deleted", "attributes", "on_hold", "stages", "type"})
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"deleted"})
 public class AePickListRequest {
 
@@ -31,7 +31,7 @@ public class AePickListRequest {
     private boolean onHold;
 
     @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
-    @JsonPropertyOrder({"externalServiceRequestId", "attributes", "expectations", "type", "is_deleted", "stages", "on_hold"})
+    @JsonPropertyOrder({"externalServiceRequestId", "expectations", "is_deleted", "attributes", "on_hold", "stages", "type"})
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"deleted"})
     public static class AeServiceRequestLine {
         private String externalServiceRequestId;
@@ -89,13 +89,14 @@ public class AePickListRequest {
     }
 
     @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    @JsonPropertyOrder({"productAttributes", "productQuantity"})
     public static class AeProduct {
         private int productQuantity;
         private AeProductAttributes productAttributes;
     }
 
     @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
-    @JsonPropertyOrder({"lot_id", "filter_parameters", "barcodes", "product_sku", "package_parameters"})
+    @JsonPropertyOrder({"package_parameters", "filter_parameters", "product_sku", "barcodes", "lot_id"})
     public static class AeProductAttributes {
         @JsonProperty("lot_id")
         private String lotId;
@@ -109,7 +110,7 @@ public class AePickListRequest {
     }
 
     @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
-    @JsonPropertyOrder({"skipStandardPickProcess", "order_options", "simple_priority"})
+    @JsonPropertyOrder({"skipStandardPickProcess", "simple_priority", "order_options"})
     public static class AeTopLevelAttributes {
         @JsonProperty("skipStandardPickProcess")
         private boolean skipStandardPickProcess;
@@ -120,6 +121,7 @@ public class AePickListRequest {
     }
 
     @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    @JsonPropertyOrder({"orderline_splitting", "customer_order_info", "destination_group", "simple_priority", "order_splitting", "order_clubbing", "container_type", "palletization", "grouping_tags", "behaviours", "bintags"})
     public static class AeOrderOptions {
         @JsonProperty("customer_order_info")
         private AeCustomerOrderInfo customerOrderInfo;
@@ -143,6 +145,7 @@ public class AePickListRequest {
     }
 
     @Data @Builder @JsonInclude(JsonInclude.Include.ALWAYS)
+    @JsonPropertyOrder({"master_order_id", "order_line_id", "shipment_id", "order_id"})
     public static class AeCustomerOrderInfo {
         @JsonProperty("order_id")
         private String orderId;
@@ -155,6 +158,7 @@ public class AePickListRequest {
     }
 
     @Data @Builder
+    @JsonPropertyOrder({"container_grouping_tag", "mission_grouning_tag", "bin_grouping_tag"})
     public static class AeGroupingTags {
         @JsonProperty("mission_grouning_tag")
         private String missionGrouningTag;

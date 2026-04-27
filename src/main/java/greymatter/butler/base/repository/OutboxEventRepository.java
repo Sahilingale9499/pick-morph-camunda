@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface OutboxEventRepository extends JpaRepository<Outbox, UUID> {
@@ -24,4 +25,13 @@ public interface OutboxEventRepository extends JpaRepository<Outbox, UUID> {
             FOR UPDATE SKIP LOCKED
             """, nativeQuery = true)
     List<Outbox> findPendingForUpdate();
+
+    /**
+     * Locks a single unpublished outbox row for the immediate after-commit path.
+     * SKIP LOCKED returns empty if the background poller already holds the lock,
+     * preventing both paths from publishing the same message.
+     */
+    @Query(value = "SELECT * FROM outbox WHERE id = ?1::uuid AND published = false FOR UPDATE SKIP LOCKED",
+            nativeQuery = true)
+    Optional<Outbox> findUnpublishedByIdForUpdate(UUID id);
 }

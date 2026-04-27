@@ -97,8 +97,8 @@ public class OutboxService {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onOutbox(OutboxMessageEvent event) {
-        Outbox outbox = outboxEventRepository.findById(event.getOutboxEventId()).orElse(null);
-        if (outbox == null || outbox.isPublished()) {
+        Outbox outbox = outboxEventRepository.findUnpublishedByIdForUpdate(event.getOutboxEventId()).orElse(null);
+        if (outbox == null) {
             return;
         }
 

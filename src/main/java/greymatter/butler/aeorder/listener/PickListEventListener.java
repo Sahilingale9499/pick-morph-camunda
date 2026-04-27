@@ -20,8 +20,8 @@ import java.util.Map;
  * is handled inside {@link greymatter.butler.aeorder.delegates.ProcessPickListEventDelegate}
  * via {@link greymatter.butler.aeorder.service.PickInstructionService#processPickListEvent}.
  *
- * command is initialised to UPDATE; the delegate overrides it to COMPLETE
- * when the derived order status turns "released".
+ * command is set exclusively by the delegate: COMPLETE when order is released,
+ * UPDATE otherwise. The listener does not set command.
  */
 @Service
 @Slf4j
@@ -72,7 +72,6 @@ public class PickListEventListener {
                     .messageName("ItemPickingEventMessage")
                     .correlationKey(pickInstructionId)
                     .variables(Map.of(
-                            "command", "UPDATE",
                             "pickListEventJson", rawEventJson
                     ))
                     .timeToLive(Duration.ofMinutes(5))

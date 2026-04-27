@@ -342,8 +342,9 @@ public class PickInstructionService {
                                     continue;
                                 }
                                 String exItemPickedTxId = pickInstructionId + "_" + internalOrderId;
+                                String exBotId = ex.getContainerAttributes().getBotId();
                                 ItemPickedEvent.ExceptionInfo exceptionInfo = buildExceptionInfo(sr.getExceptions(), exTxId);
-                                buildAndSaveItemPickedEvent(pickInstructionId, pi, exItemPickedTxId, null, 0, "bot", exceptionInfo, null, internalOrderId, null, null);
+                                buildAndSaveItemPickedEvent(pickInstructionId, pi, exItemPickedTxId, null, 0, "bot", exceptionInfo, null, internalOrderId, null, exBotId);
                                 log.info("Enqueued ItemPickedEvent (exception-only) | pickInstructionId: {} | txId: {} | exTxId: {} | exState: {}",
                                         pickInstructionId, exItemPickedTxId, exTxId, ex.getState());
                                 itemPickedDispatched = true;

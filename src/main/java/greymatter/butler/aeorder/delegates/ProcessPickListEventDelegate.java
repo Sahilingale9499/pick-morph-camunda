@@ -23,7 +23,9 @@ import java.util.Map;
  *        created            → OrderUpdateEvent (transaction data as actuals)
  *   3. Enqueues an SR-level OrderUpdateEvent.
  *
- * Sets command = COMPLETE when derived order status is "released".
+ * Sole owner of the command routing decision:
+ *   command = "COMPLETE" when derived order status is "released" (ends the workflow)
+ *   command = "UPDATE"   otherwise (loops back to wait for the next event)
  */
 @Component
 @Slf4j
@@ -55,9 +57,9 @@ public class ProcessPickListEventDelegate {
         if ("released".equals(orderStatus)) {
             log.info("Order released for pickInstructionId: {} — triggering workflow completion", pickInstructionId);
             out.put("command", "COMPLETE");
+        } else {
+            out.put("command", "UPDATE");
         }
-        out.put("txStatus", "SUCCESS");
-        out.put("txComplete", false);
         return out;
     }
 }
