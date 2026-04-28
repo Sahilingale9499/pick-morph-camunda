@@ -56,10 +56,8 @@ public class ProcessPickListEventDelegate {
         Map<String, Object> out = new HashMap<>();
         if ("released".equals(orderStatus)) {
             log.info("Order released for pickInstructionId: {} — triggering workflow completion", pickInstructionId);
-            out.put("command", "COMPLETE");
-        } else {
-            out.put("command", "UPDATE");
         }
+        out.put("orderStatus", orderStatus);
         return out;
     }
 }

@@ -95,7 +95,7 @@
     </serviceTask>
 
     <!-- ─── Command Gateway ─── -->
-    <exclusiveGateway id="commandGateway" name="Command?" default="flow_commandGw_update">
+    <exclusiveGateway id="commandGateway" name="Order Released?" default="flow_commandGw_update">
       <incoming>flow_sendTxKafka_to_commandGw</incoming>
       <outgoing>flow_commandGw_complete</outgoing>
       <outgoing>flow_commandGw_update</outgoing>
@@ -153,7 +153,7 @@
     <sequenceFlow id="flow_commandGw_complete"
                   sourceRef="commandGateway"
                   targetRef="endComplete">
-      <conditionExpression xsi:type="tFormalExpression">=command = "COMPLETE"</conditionExpression>
+      <conditionExpression xsi:type="tFormalExpression">=orderStatus = "released"</conditionExpression>
     </sequenceFlow>
 
     <!-- Loop back: in-progress → wait for next event -->

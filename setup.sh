@@ -3,10 +3,10 @@
 # setup.sh — Start / reset pick-morph-camunda for a clean run
 #
 # HOT path  (spring-camunda already running):
-#   1. Truncate app tables (outbox_event, transaction_status, ae_order)
-#   2. Truncate Camunda runtime + history tables
+#   1. Truncate app tables (outbox, transaction_status, order_mapping, ae_order)
+#   2. Clear Zeebe/Operate state (rm -v zeebe+operate containers to wipe RocksDB anon volumes, then delete ES indices)
 #   3. Delete Kafka topics
-#   4. Rebuild & restart ONLY spring-camunda (postgres/kafka untouched)
+#   4. Rebuild & restart ONLY spring-camunda (postgres/kafka/elasticsearch untouched)
 #
 # COLD path (nothing running):
 #   docker compose down -v  →  docker compose up --build -d
@@ -86,7 +86,42 @@ if docker ps --format '{{.Names}}' | grep -q "^${SPRING}$"; then
   ok "App tables cleared."
   step_done
 
-  # 2. Delete Kafka topics
+  # 2. Clear Zeebe + Operate state (Zeebe RocksDB volumes + Elasticsearch indices)
+  step_start
+  log "Stopping and removing zeebe + operate containers (including anonymous volumes)..."
+  docker compose rm -f -s -v zeebe operate
+  log "Deleting Zeebe/Operate/Tasklist Elasticsearch indices..."
+  # Zeebe re-exports RocksDB → ES on startup, so indices must be wiped AFTER containers are stopped.
+  # ES 8.x blocks wildcard deletes (action.destructive_requires_name=true), so list exact names first.
+  ES_INDICES=$(curl -s "http://localhost:9200/_cat/indices?h=index" \
+    | grep -E "^(camunda|operate|tasklist)-" | tr '\n' ',' | sed 's/,$//')
+  if [ -n "$ES_INDICES" ]; then
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "http://localhost:9200/$ES_INDICES")
+    if [ "$STATUS" = "200" ]; then
+      ok "Elasticsearch indices cleared."
+    else
+      warn "ES index deletion returned HTTP $STATUS — continuing anyway."
+    fi
+  else
+    ok "No Elasticsearch indices to clear."
+  fi
+  log "Starting fresh zeebe and operate containers..."
+  docker compose up -d --no-deps zeebe operate
+  log "Waiting for zeebe to be healthy..."
+  zeebe_attempts=0
+  until docker inspect "${PROJECT}-zeebe-1" --format '{{.State.Health.Status}}' 2>/dev/null | grep -q "healthy"; do
+    zeebe_attempts=$((zeebe_attempts + 1))
+    if [ $zeebe_attempts -ge 36 ]; then
+      warn "Timed out waiting for zeebe. Check: docker compose logs zeebe"
+      exit 1
+    fi
+    sleep 5; printf "."
+  done
+  echo ""
+  ok "Zeebe is healthy."
+  step_done
+
+  # 3. Delete Kafka topics
   step_start
   log "Deleting Kafka topics..."
   for topic in "${KAFKA_TOPICS[@]}"; do
@@ -103,7 +138,7 @@ if docker ps --format '{{.Names}}' | grep -q "^${SPRING}$"; then
   done
   step_done
 
-  # 3. Rebuild & restart only spring-camunda
+  # 4. Rebuild & restart only spring-camunda
   step_start
   log "Building JAR..."
   mvn package -DskipTests
